@@ -1,0 +1,12 @@
+[provider]
+cluster = "devnet"
+wallet = "~/.config/solana/id.json"
+
+[programs.devnet]
+bountygraph = "BGRPHFnG8z7gxJnefVh3Y7LV9TjTuN2hfQdqzN9vNS5A"
+
+[registry]
+url = "https://api.apr.dev"
+
+[scripts]
+test = "anchor test"

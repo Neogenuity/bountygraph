@@ -1,0 +1,26 @@
+{
+  "name": "bountygraph-monorepo",
+  "version": "0.1.0",
+  "description": "BountyGraph - On-chain proof-of-work receipts and dependency graphs",
+  "private": true,
+  "workspaces": [
+    "api",
+    "ui"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces",
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "lint": "npm run lint --workspaces"
+  },
+  "keywords": [
+    "solana",
+    "bounty",
+    "verification",
+    "escrow",
+    "agent",
+    "hackathon"
+  ],
+  "author": "neogenuity",
+  "license": "MIT"
+}
