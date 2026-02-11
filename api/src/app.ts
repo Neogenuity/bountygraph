@@ -154,6 +154,17 @@ export function createApp(state: AppState = createDefaultState()) {
         return res.status(409).json({ error: 'Receipt already exists' });
       }
 
+      // Check for duplicate receipts: prevent multiple receipts for the same milestone by the same worker
+      const existingReceiptForMilestone = Array.from(state.receipts.values()).find(
+        (r) => r.bountyId === bountyId && r.milestoneIndex === milestoneIndex && r.worker === workerWallet && r.status === 'pending'
+      );
+      if (existingReceiptForMilestone) {
+        return res.status(409).json({
+          error: 'Receipt already submitted for this milestone by this worker',
+          existingReceiptId: existingReceiptForMilestone.id,
+        });
+      }
+
       const now = Math.floor(Date.now() / 1000);
       const receipt: ReceiptRecord = {
         id: receiptId,
@@ -207,10 +218,14 @@ export function createApp(state: AppState = createDefaultState()) {
   app.post('/receipts/:receiptId/verify', async (req, res) => {
     try {
       const { receiptId } = req.params;
-      const { approved, verifierNote } = req.body ?? {};
+      const { approved, verifierNote, verifier } = req.body ?? {};
 
       if (typeof approved !== 'boolean') {
         return res.status(400).json({ error: 'Invalid approval status' });
+      }
+
+      if (!verifier || typeof verifier !== 'string') {
+        return res.status(400).json({ error: 'Verifier wallet is required' });
       }
 
       const receipt = state.receipts.get(receiptId);
@@ -218,6 +233,13 @@ export function createApp(state: AppState = createDefaultState()) {
 
       const bounty = state.bounties.get(receipt.bountyId);
       if (!bounty) return res.status(404).json({ error: 'Bounty not found' });
+
+      // Access control: only the bounty creator can verify receipts
+      if (verifier !== bounty.creator) {
+        return res.status(403).json({
+          error: 'Only the bounty creator can verify receipts',
+        });
+      }
 
       if (bounty.disputeStatus !== 'none') {
         return res.status(409).json({ error: 'Bounty is in dispute' });

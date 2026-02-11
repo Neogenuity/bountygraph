@@ -4,8 +4,8 @@
  */
 
 import { Keypair, PublicKey, Connection, LAMPORTS_PER_SOL } from '@solana/web3.js';
-import * as anchor from '@project-serum/anchor';
-import { Program } from '@project-serum/anchor';
+import * as anchor from '@coral-xyz/anchor';
+import { Program } from '@coral-xyz/anchor';
 import { TOKEN_PROGRAM_ID, createMint, createAccount, mintTo } from '@solana/spl-token';
 import * as assert from 'assert';
 

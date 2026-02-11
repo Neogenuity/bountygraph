@@ -77,4 +77,51 @@ describe('BountyGraph API dispute flow', () => {
       .send({ raisedBy: 'random-wallet' })
       .expect(403);
   });
+
+  it('enforces access control on receipt verification', async () => {
+    const state = createDefaultState();
+    const app = createApp(state);
+
+    const bountyId = `bounty-verify-${Date.now()}`;
+    const creator = 'creator-wallet';
+    const worker = 'worker-wallet';
+
+    // Create bounty
+    await request(app)
+      .post('/bounties')
+      .send({
+        bountyId,
+        title: 'Verify Test',
+        totalAmount: 1000,
+        milestoneCount: 1,
+        creatorWallet: creator,
+      })
+      .expect(201);
+
+    // Submit receipt
+    const receiptId = `r-${Date.now()}`;
+    await request(app)
+      .post('/receipts')
+      .send({
+        receiptId,
+        bountyId,
+        milestoneIndex: 0,
+        artifactHash: 'a'.repeat(64),
+        metadataUri: 'ipfs://x',
+        workerWallet: worker,
+      })
+      .expect(201);
+
+    // Try to verify with non-creator (should fail)
+    await request(app)
+      .post(`/receipts/${receiptId}/verify`)
+      .send({ approved: true, verifier: 'attacker-wallet' })
+      .expect(403);
+
+    // Verify with creator (should succeed)
+    await request(app)
+      .post(`/receipts/${receiptId}/verify`)
+      .send({ approved: true, verifier: creator })
+      .expect(200);
+  });
 });

@@ -128,6 +128,53 @@ describe('BountyGraph API Integration Tests', () => {
         .expect(400);
     });
 
+    it('should prevent duplicate receipt for same milestone from same worker', async function () {
+      this.timeout(TIMEOUT);
+      const bountyId = 'dup-test-' + Date.now();
+
+      // Create a bounty
+      await request(app)
+        .post('/bounties')
+        .send({
+          bountyId,
+          title: 'Duplicate Test',
+          totalAmount: 1_000_000,
+          milestoneCount: 2,
+          creatorWallet: 'creator-dup',
+        })
+        .expect(201);
+
+      // Submit first receipt
+      const receipt1Id = 'receipt-dup-1-' + Date.now();
+      await request(app)
+        .post('/receipts')
+        .send({
+          receiptId: receipt1Id,
+          bountyId,
+          milestoneIndex: 0,
+          artifactHash: 'a'.repeat(64),
+          metadataUri: 'ipfs://first',
+          workerWallet: 'worker-dup',
+        })
+        .expect(201);
+
+      // Try to submit another receipt for the same milestone from same worker
+      const receipt2Id = 'receipt-dup-2-' + Date.now();
+      const response = await request(app)
+        .post('/receipts')
+        .send({
+          receiptId: receipt2Id,
+          bountyId,
+          milestoneIndex: 0,
+          artifactHash: 'b'.repeat(64),
+          metadataUri: 'ipfs://second',
+          workerWallet: 'worker-dup',
+        })
+        .expect(409);
+
+      assert.ok(response.body.error.includes('already submitted'));
+    });
+
     it('should retrieve receipt by ID', async function () {
       this.timeout(TIMEOUT);
       const response = await request(app)
@@ -147,15 +194,40 @@ describe('BountyGraph API Integration Tests', () => {
   });
 
   describe('Receipt Verification Tests', () => {
-    it('should verify receipt and approve', async function () {
+    it('should verify receipt and approve with authorized verifier', async function () {
       this.timeout(TIMEOUT);
       const response = await request(app)
         .post(`/receipts/${createdReceiptId}/verify`)
-        .send({ approved: true, verifierNote: 'Work quality is excellent' })
+        .send({ approved: true, verifier: 'wallet123', verifierNote: 'Work quality is excellent' })
         .expect(200);
 
       assert.ok(response.body.success);
       assert.equal(response.body.approved, true);
+    });
+
+    it('should reject verification from unauthorized verifier', async function () {
+      this.timeout(TIMEOUT);
+      // Create a new receipt to test with unauthorized verifier
+      const receiptId = 'receipt-' + Date.now();
+      await request(app)
+        .post('/receipts')
+        .send({
+          receiptId,
+          bountyId: createdBountyId,
+          milestoneIndex: 1,
+          artifactHash: 'b'.repeat(64),
+          metadataUri: 'ipfs://test',
+          workerWallet: 'worker-wallet-2',
+        })
+        .expect(201);
+
+      // Try to verify with a different wallet than the creator
+      const response = await request(app)
+        .post(`/receipts/${receiptId}/verify`)
+        .send({ approved: true, verifier: 'unauthorized-wallet' })
+        .expect(403);
+
+      assert.ok(response.body.error.includes('creator'));
     });
 
     it('should require valid approval status', async function () {
@@ -163,6 +235,14 @@ describe('BountyGraph API Integration Tests', () => {
       await request(app)
         .post(`/receipts/${createdReceiptId}/verify`)
         .send({ approved: 'maybe' })
+        .expect(400);
+    });
+
+    it('should require verifier field', async function () {
+      this.timeout(TIMEOUT);
+      await request(app)
+        .post(`/receipts/${createdReceiptId}/verify`)
+        .send({ approved: true })
         .expect(400);
     });
   });
