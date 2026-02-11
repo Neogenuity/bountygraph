@@ -44,7 +44,10 @@ pub mod bountygraph {
             params.reward_lamports >= MIN_REWARD_LAMPORTS,
             BountyGraphError::InvalidReward
         );
-        require!((deps.len() as u16) <= max_deps, BountyGraphError::TooManyDependencies);
+        require!(
+            (deps.len() as u16) <= max_deps,
+            BountyGraphError::TooManyDependencies
+        );
 
         let mut prev: Option<u64> = None;
         for dep in deps.iter() {
@@ -65,8 +68,14 @@ pub mod bountygraph {
                 let expected_dep_id = deps[i];
                 let dep_task: Account<Task> = Account::try_from(dep_task_info)?;
 
-                require!(dep_task.graph == graph_key, BountyGraphError::InvalidDependency);
-                require!(dep_task.task_id == expected_dep_id, BountyGraphError::InvalidDependency);
+                require!(
+                    dep_task.graph == graph_key,
+                    BountyGraphError::InvalidDependency
+                );
+                require!(
+                    dep_task.task_id == expected_dep_id,
+                    BountyGraphError::InvalidDependency
+                );
 
                 require!(
                     !dep_task.dependencies.iter().any(|d| *d == params.task_id),
@@ -131,7 +140,11 @@ pub mod bountygraph {
         let funder = ctx.accounts.funder.key();
         let escrow_key = ctx.accounts.escrow.key();
 
-        let ix = anchor_lang::solana_program::system_instruction::transfer(&funder, &escrow_key, lamports);
+        let ix = anchor_lang::solana_program::system_instruction::transfer(
+            &funder,
+            &escrow_key,
+            lamports,
+        );
         anchor_lang::solana_program::program::invoke(
             &ix,
             &[

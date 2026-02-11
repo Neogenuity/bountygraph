@@ -91,10 +91,25 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
       
-      - name: Install Solana CLI
+      - name: Cache Solana CLI
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/solana-github/v${{ env.SOLANA_VERSION }}
+          key: ${{ runner.os }}-solana-${{ env.SOLANA_VERSION }}
+
+      - name: Install Solana CLI (GitHub release mirror)
+        shell: bash
         run: |
-          sh -c "$(curl -sSfL https://release.solana.com/v${SOLANA_VERSION}/install)"
-          export PATH="/home/runner/.local/share/solana/install/active_release/bin:$PATH"
+          set -euo pipefail
+          SOLANA_DIR="$HOME/.local/share/solana-github/v${SOLANA_VERSION}"
+          if [[ ! -x "$SOLANA_DIR/bin/solana" ]]; then
+            mkdir -p "$SOLANA_DIR"
+            URL="https://github.com/solana-labs/solana/releases/download/v${SOLANA_VERSION}/solana-release-x86_64-unknown-linux-gnu.tar.bz2"
+            echo "Downloading Solana CLI from $URL"
+            curl -fL --retry 5 --retry-all-errors --connect-timeout 20 --max-time 300 "$URL" -o /tmp/solana.tar.bz2
+            tar -xjf /tmp/solana.tar.bz2 -C "$SOLANA_DIR" --strip-components=1
+          fi
+          echo "$SOLANA_DIR/bin" >> $GITHUB_PATH
           solana --version
       
       - name: Cache cargo
@@ -226,15 +241,30 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
       
-      - name: Setup Solana CLI
+      - name: Cache Solana CLI
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/solana-github/v${{ env.SOLANA_VERSION }}
+          key: ${{ runner.os }}-solana-${{ env.SOLANA_VERSION }}
+
+      - name: Install Solana CLI (GitHub release mirror)
+        shell: bash
         run: |
-          sh -c "$(curl -sSfL https://release.solana.com/v${SOLANA_VERSION}/install)"
-      
+          set -euo pipefail
+          SOLANA_DIR="$HOME/.local/share/solana-github/v${SOLANA_VERSION}"
+          if [[ ! -x "$SOLANA_DIR/bin/solana" ]]; then
+            mkdir -p "$SOLANA_DIR"
+            URL="https://github.com/solana-labs/solana/releases/download/v${SOLANA_VERSION}/solana-release-x86_64-unknown-linux-gnu.tar.bz2"
+            curl -fL --retry 5 --retry-all-errors --connect-timeout 20 --max-time 300 "$URL" -o /tmp/solana.tar.bz2
+            tar -xjf /tmp/solana.tar.bz2 -C "$SOLANA_DIR" --strip-components=1
+          fi
+          echo "$SOLANA_DIR/bin" >> $GITHUB_PATH
+          solana --version
+
       - name: Deploy to Devnet
         env:
           SOLANA_KEYPAIR: ${{ secrets.SOLANA_DEVNET_KEYPAIR }}
         run: |
-          export PATH="/home/runner/.local/share/solana/install/active_release/bin:$PATH"
           mkdir -p ~/.config/solana
           echo "$SOLANA_KEYPAIR" > ~/.config/solana/id.json
           anchor deploy --provider.cluster devnet
