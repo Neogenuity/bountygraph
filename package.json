@@ -12,7 +12,7 @@
     "build": "npm run build --workspaces",
     "test": "npm run test --workspaces",
     "test:anchor": "mocha tests/bountygraph.test.ts --require ts-node/register --timeout 60000",
-    "test:api": "mocha api/tests/integration.test.ts --require ts-node/register --timeout 30000",
+    "test:api": "mocha api/tests/**/*.test.ts --require ts-node/register --timeout 30000", 
     "test:all": "npm run test:anchor && npm run test:api",
     "lint": "npm run lint --workspaces",
     "ci": "npm run test:all && npm run build",
