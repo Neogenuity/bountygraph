@@ -96,12 +96,6 @@ impl Receipt {
     pub const INIT_SPACE: usize = 32 + 32 + 32 + 4 + Self::MAX_URI_LEN + 8 + 1;
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
-pub enum DisputeStatus {
-    Raised,
-    Resolved,
-}
-
 #[account]
 pub struct Dispute {
     pub task: Pubkey,
