@@ -223,6 +223,123 @@
             color: #666;
             border-top: 1px solid #e0e0e0;
         }
+
+        .notice {
+            background: #f0f4ff;
+            border-left: 4px solid #667eea;
+            padding: 14px 16px;
+            border-radius: 8px;
+            line-height: 1.7;
+            color: #263238;
+        }
+
+        .solana-panel {
+            background: #0b1220;
+            border: 1px solid rgba(102, 126, 234, 0.35);
+            border-radius: 10px;
+            padding: 18px;
+            color: #e5e7eb;
+            margin-top: 16px;
+        }
+
+        .solana-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: space-between;
+        }
+
+        .solana-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #9ca3af;
+            box-shadow: 0 0 0 4px rgba(156, 163, 175, 0.15);
+        }
+
+        .dot.ok {
+            background: #22c55e;
+            box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.16);
+        }
+
+        .dot.bad {
+            background: #ef4444;
+            box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.16);
+        }
+
+        .pill {
+            background: rgba(102, 126, 234, 0.18);
+            border: 1px solid rgba(102, 126, 234, 0.4);
+            border-radius: 999px;
+            padding: 6px 10px;
+            font-family: monospace;
+            font-size: 12px;
+            color: #c7d2fe;
+            white-space: nowrap;
+        }
+
+        .alert {
+            margin-top: 12px;
+            padding: 12px;
+            border-radius: 8px;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.35);
+            color: #fecaca;
+            display: none;
+        }
+
+        .tx-controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 14px;
+        }
+
+        .tx-controls input {
+            flex: 1;
+            min-width: 260px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            background: rgba(15, 23, 42, 0.65);
+            color: #e5e7eb;
+            outline: none;
+            font-family: monospace;
+        }
+
+        .tx-controls button {
+            padding: 10px 14px;
+            border-radius: 8px;
+            border: 1px solid rgba(102, 126, 234, 0.6);
+            background: rgba(102, 126, 234, 0.2);
+            color: #e5e7eb;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .tx-controls button:hover {
+            background: rgba(102, 126, 234, 0.32);
+        }
+
+        .tx-list {
+            margin-top: 14px;
+            padding-left: 18px;
+            line-height: 1.8;
+            color: #cbd5e1;
+            font-family: monospace;
+            font-size: 13px;
+        }
+
+        .tx-list a {
+            color: #a5b4fc;
+        }
     </style>
 </head>
 <body>
@@ -243,6 +360,46 @@
                     <strong>FIRST AND ONLY</strong> Solana bounty system with <strong>cryptographic circular dependency prevention</strong>. 
                     Try it: Create Task A→B and Task B→A. The program rejects it at tx submission. No other bounty system prevents this at the protocol level.
                 </p>
+            </div>
+
+            <!-- How It Works -->
+            <div class="section">
+                <h2>🧠 How It Works (Graph Traversal)</h2>
+                <div class="notice">
+                    BountyGraph models tasks as a directed graph where edges point from a task to its prerequisites.
+                    When adding a new dependency, the client/API runs a DFS reachability check to ensure the new edge can’t create a cycle.
+                    To compute a valid execution order, it uses a topological sort (Kahn’s algorithm) so a task only unlocks when all of its dependencies are complete.
+                    On-chain accounts store a sorted dependency list so verification remains deterministic and cheap to audit.
+                </div>
+
+                <div class="solana-panel" aria-live="polite">
+                    <div class="solana-row">
+                        <div class="solana-status">
+                            <span id="solanaDot" class="dot"></span>
+                            <div>
+                                <div style="font-weight: 700;">Solana Status</div>
+                                <div id="solanaStatusText" style="opacity: 0.95;">Connecting to Solana…</div>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: flex-end;">
+                            <span id="solanaEndpoint" class="pill">rpc: https://api.devnet.solana.com</span>
+                            <button id="solanaReconnect" class="btn btn-secondary" style="padding: 10px 14px;">Reconnect</button>
+                        </div>
+                    </div>
+                    <div id="solanaMeta" style="margin-top: 12px; opacity: 0.95; line-height: 1.7;"></div>
+                    <div id="solanaError" class="alert"></div>
+
+                    <div style="margin-top: 18px; font-weight: 700;">Transaction Inspector (Devnet)</div>
+                    <div style="margin-top: 8px; opacity: 0.9;">
+                        Paste a transaction signature from the CLI examples/tests to get a clickable Solscan link.
+                    </div>
+                    <div class="tx-controls">
+                        <input id="txSigInput" placeholder="Enter tx signature (base58)…" autocomplete="off" />
+                        <button id="txLookup">Lookup</button>
+                        <button id="txClear" style="border-color: rgba(148, 163, 184, 0.35); background: rgba(148, 163, 184, 0.12);">Clear</button>
+                    </div>
+                    <ul id="txList" class="tx-list"></ul>
+                </div>
             </div>
             
             <!-- What is BountyGraph -->
@@ -416,5 +573,183 @@ Built with: Anchor (Rust), PDAs for custody, CPI-ready for integrations
             <p style="font-size: 0.9em; margin-top: 10px;">Built for the Colosseum Agent Hackathon</p>
         </div>
     </div>
+
+    <script src="https://unpkg.com/@solana/web3.js@1.98.4/lib/index.iife.min.js"></script>
+    <script>
+        (function () {
+            const endpoint = 'https://api.devnet.solana.com';
+
+            const dotEl = document.getElementById('solanaDot');
+            const statusEl = document.getElementById('solanaStatusText');
+            const metaEl = document.getElementById('solanaMeta');
+            const errEl = document.getElementById('solanaError');
+            const reconnectBtn = document.getElementById('solanaReconnect');
+
+            const sigInput = document.getElementById('txSigInput');
+            const lookupBtn = document.getElementById('txLookup');
+            const clearBtn = document.getElementById('txClear');
+            const txList = document.getElementById('txList');
+
+            function setStatus(state, text) {
+                dotEl.classList.remove('ok', 'bad');
+                if (state === 'ok') dotEl.classList.add('ok');
+                if (state === 'bad') dotEl.classList.add('bad');
+                statusEl.textContent = text;
+            }
+
+            function showError(message) {
+                errEl.style.display = 'block';
+                errEl.textContent = message;
+            }
+
+            function clearError() {
+                errEl.style.display = 'none';
+                errEl.textContent = '';
+            }
+
+            function solscanTxUrl(signature) {
+                return `https://solscan.io/tx/${signature}?cluster=devnet`;
+            }
+
+            function renderTxList(items) {
+                txList.innerHTML = '';
+                if (!items.length) {
+                    const li = document.createElement('li');
+                    li.style.opacity = '0.85';
+                    li.textContent = 'No transactions yet. Run `ts-node examples/quickstart.ts` and paste the printed signature here.';
+                    txList.appendChild(li);
+                    return;
+                }
+
+                for (const item of items) {
+                    const li = document.createElement('li');
+                    const a = document.createElement('a');
+                    a.href = solscanTxUrl(item.signature);
+                    a.target = '_blank';
+                    a.rel = 'noreferrer';
+                    a.textContent = item.signature;
+                    li.appendChild(a);
+                    if (item.slot !== undefined && item.slot !== null) {
+                        const span = document.createElement('span');
+                        span.textContent = `  (slot ${item.slot})`;
+                        span.style.opacity = '0.85';
+                        li.appendChild(span);
+                    }
+                    txList.appendChild(li);
+                }
+            }
+
+            function loadSavedTxs() {
+                try {
+                    const raw = localStorage.getItem('bountygraph_demo_txs');
+                    if (!raw) return [];
+                    const parsed = JSON.parse(raw);
+                    return Array.isArray(parsed) ? parsed.slice(0, 10) : [];
+                } catch {
+                    return [];
+                }
+            }
+
+            function saveTxs(items) {
+                try {
+                    localStorage.setItem('bountygraph_demo_txs', JSON.stringify(items.slice(0, 10)));
+                } catch {
+                    // ignore storage errors (private mode, etc.)
+                }
+            }
+
+            async function connect() {
+                clearError();
+                setStatus('loading', 'Connecting to Solana…');
+                metaEl.textContent = '';
+
+                if (!window.solanaWeb3) {
+                    setStatus('bad', 'Solana web3.js failed to load');
+                    showError('Could not load Solana web3.js from CDN. Please refresh, or try again later.');
+                    return;
+                }
+
+                const { Connection } = window.solanaWeb3;
+
+                try {
+                    const connection = new Connection(endpoint, 'confirmed');
+                    const [version, bh] = await Promise.all([
+                        connection.getVersion(),
+                        connection.getLatestBlockhash('confirmed')
+                    ]);
+
+                    setStatus('ok', 'Connected to Solana devnet');
+                    metaEl.innerHTML = `Cluster version: <span class="pill">${version['solana-core'] || 'unknown'}</span> &nbsp; Latest blockhash: <span class="pill">${bh.blockhash}</span>`;
+                } catch (e) {
+                    setStatus('bad', 'Could not reach Solana devnet');
+                    const msg = (e && e.message) ? e.message : String(e);
+                    showError('We could not connect to Solana devnet from this browser. If you are evaluating locally, check your network or try again.\n\nDetails: ' + msg);
+                }
+            }
+
+            async function lookupSignature(signature) {
+                clearError();
+
+                const sig = (signature || '').trim();
+                if (!sig) {
+                    showError('Please paste a transaction signature first.');
+                    return;
+                }
+
+                if (!window.solanaWeb3) {
+                    showError('Solana web3.js is not available; cannot lookup transactions.');
+                    return;
+                }
+
+                setStatus(dotEl.classList.contains('ok') ? 'ok' : 'loading', 'Looking up transaction…');
+
+                const { Connection } = window.solanaWeb3;
+                const connection = new Connection(endpoint, 'confirmed');
+
+                try {
+                    const tx = await connection.getTransaction(sig, { maxSupportedTransactionVersion: 0, commitment: 'confirmed' });
+                    const slot = tx ? tx.slot : null;
+
+                    const existing = loadSavedTxs();
+                    const next = [{ signature: sig, slot }, ...existing.filter(x => x.signature !== sig)].slice(0, 10);
+                    saveTxs(next);
+                    renderTxList(next);
+
+                    setStatus('ok', slot ? 'Transaction found on devnet' : 'Signature saved (not found yet)');
+                    if (!tx) {
+                        showError('Signature saved, but Solana RPC did not return the transaction yet. If it was just submitted, wait a moment and lookup again.');
+                    }
+                } catch (e) {
+                    setStatus('bad', 'Transaction lookup failed');
+                    const msg = (e && e.message) ? e.message : String(e);
+                    showError('Could not fetch that transaction. Make sure the signature is correct and on devnet.\n\nDetails: ' + msg);
+                }
+            }
+
+            reconnectBtn.addEventListener('click', function () {
+                connect();
+            });
+
+            lookupBtn.addEventListener('click', function () {
+                lookupSignature(sigInput.value);
+            });
+
+            sigInput.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') lookupSignature(sigInput.value);
+            });
+
+            clearBtn.addEventListener('click', function () {
+                saveTxs([]);
+                renderTxList([]);
+                sigInput.value = '';
+                clearError();
+                setStatus(dotEl.classList.contains('ok') ? 'ok' : 'loading', 'Ready');
+            });
+
+            // Initialize
+            renderTxList(loadSavedTxs());
+            connect();
+        })();
+    </script>
 </body>
 </html>

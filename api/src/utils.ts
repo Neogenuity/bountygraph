@@ -280,8 +280,13 @@ export function formatErrorLog(error: any, context: string): string {
 // ============ DAG Validation Functions ============
 
 /**
- * Check if adding a dependency would create a cycle in the task graph
- * Uses DFS to detect cycles
+ * Check if adding a dependency would create a cycle in the task graph.
+ *
+ * WHY DFS here:
+ * - We want a cheap, incremental safety check at "edge insertion" time (task -> newDependency).
+ * - DFS with a recursion stack finds back-edges (cycles) without requiring a full re-sort of the graph.
+ * - Using `visited` + `recursionStack` keeps the check linear in the reachable subgraph, which matters
+ *   when clients are constructing many tasks programmatically.
  */
 export function wouldCreateCycle(
   taskId: string,
@@ -293,8 +298,8 @@ export function wouldCreateCycle(
     return true;
   }
 
-  // Check if adding this dependency would create a cycle
-  // by seeing if newDependencyId can reach taskId through existing dependencies
+  // WHY this direction: a new edge (taskId -> newDependencyId) creates a cycle iff there is already
+  // a path (newDependencyId -> ... -> taskId). We check reachability by walking dependency edges.
   const visited = new Set<string>();
   const recursionStack = new Set<string>();
 
@@ -358,8 +363,13 @@ export function validateDependencyList(dependencies: string[]): string | null {
 }
 
 /**
- * Topological sort of tasks based on dependencies
- * Returns sorted task IDs or null if there's a cycle
+ * Topological sort of tasks based on dependencies.
+ * Returns sorted task IDs or null if there's a cycle.
+ *
+ * WHY Kahn's algorithm:
+ * - Produces a deterministic execution order (given deterministic iteration) that respects prerequisites.
+ * - Naturally detects cycles: if we can't consume all nodes (in-degree never reaches 0), a cycle exists.
+ * - Avoids recursion and keeps memory overhead small for typical hackathon-scale graphs.
  */
 export function topologicalSort(
   taskIds: string[],
@@ -374,10 +384,14 @@ export function topologicalSort(
     adjList.set(taskId, []);
   }
 
+  const taskIdSet = new Set(taskIds);
+
   // Build graph
   for (const [taskId, deps] of dependencies.entries()) {
     for (const depId of deps) {
-      if (!taskIds.includes(depId)) continue; // Skip external dependencies
+      // WHY: dependency maps may contain references outside the current subgraph (e.g., pagination).
+      // Using a Set keeps membership checks O(1) and avoids an O(n^2) `includes` hotspot.
+      if (!taskIdSet.has(depId)) continue;
       const children = adjList.get(depId) || [];
       children.push(taskId);
       adjList.set(depId, children);

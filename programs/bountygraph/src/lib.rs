@@ -66,10 +66,15 @@ pub mod bountygraph {
                 BountyGraphError::MissingDependencyAccounts
             );
 
-            // SECURITY: Circular dependency prevention - verify no dependency points back to this task
-            // This is the core innovation: we check ALL transitive dependencies at creation time
-            // For each dependency task, verify it doesn't list params.task_id in its dependencies
-            // This prevents A→B→A cycles from being created in the first place
+            // SECURITY: Circular dependency prevention - verify no dependency points back to this task.
+            //
+            // WHY this check exists on-chain:
+            // - The easiest class of cycles to accidentally introduce is a 2-cycle (A depends on B while
+            //   B already depends on A). That can be prevented deterministically at instruction time.
+            // - Full transitive cycle checks require walking the dependency graph, which would either
+            //   require passing a large transitive-closure account set or doing unbounded account loads.
+            //   We keep the on-chain rule bounded and deterministic, while the client/API performs the
+            //   complete DFS-based cycle check before submitting the transaction.
             for (i, dep_task_info) in ctx.remaining_accounts.iter().enumerate() {
                 let expected_dep_id = deps[i];
                 let dep_task: Account<Task> = Account::try_from(dep_task_info)?;
@@ -85,8 +90,9 @@ pub mod bountygraph {
                     BountyGraphError::InvalidDependency
                 );
 
-                // CRITICAL: Circular dependency check - this ensures DAG property
-                // If any dependency lists this task as a dependency, we have a cycle
+                // CRITICAL: Prevent the immediate back-edge (2-cycle).
+                // If any dependency already lists this task, adding (this -> dependency) would create
+                // A -> B and B -> A, which we must reject at the protocol layer.
                 require!(
                     !dep_task.dependencies.iter().any(|d| *d == params.task_id),
                     BountyGraphError::CircularDependency

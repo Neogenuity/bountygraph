@@ -30,6 +30,8 @@ Centralized bounty platforms (Upwork, Fiverr, GitHub Sponsors) rely on:
 
 ### Architecture Overview
 
+BountyGraph is a Solana program (Anchor) plus a thin TypeScript SDK/API used by agents and judges. The program stores each task as a PDA with an explicit dependency list and an escrow PDA that holds funds until verification completes. Off-chain, the SDK/API validates proposed dependency edges with cycle detection and computes an execution order via topological sort so multi-step work can be evaluated deterministically. An indexer-friendly event model (transaction signatures + account state) lets judges audit every action on Solscan without trusting a centralized server.
+
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    BountyGraph System                   │
@@ -151,6 +153,30 @@ Try the circular dependency rejection:
 3. Watch it **reject the circular dependency in real-time**
 
 This is the unique innovation. No other bounty system prevents circular dependencies cryptographically.
+
+## Judge Quick Start (Evaluate in ~5 Minutes)
+
+1. **Open the live demo:** https://neogenuity.github.io/bountygraph/
+2. **Confirm Solana connectivity:** the page shows **“Connecting to Solana…”** then **“Connected to Solana devnet”** (with cluster version + blockhash).
+3. **Run a real on-chain interaction locally** (prints transaction signatures):
+   ```bash
+   git clone https://github.com/neogenuity/bountygraph.git
+   cd bountygraph
+   npm install
+   ts-node examples/quickstart.ts
+   ```
+4. **Paste a printed signature into the demo’s Transaction Inspector** to get a one-click **Solscan** link and slot.
+5. **Verify the key property:** try creating an A→B then B→A dependency via the SDK/API flow (or follow `DEMO.md`) and observe that cycle detection rejects the invalid edge before submission.
+
+## Live Demo Screenshots
+
+Connection + cluster metadata:
+
+![Live demo connection panel](docs/assets/demo-connection.svg)
+
+Transaction Inspector with Solscan links:
+
+![Live demo transaction inspector](docs/assets/demo-tx.svg)
 
 ## Competitive Positioning
 

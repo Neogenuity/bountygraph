@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#667eea"/>
+      <stop offset="1" stop-color="#764ba2"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="18" flood-color="#000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)"/>
+
+  <g filter="url(#shadow)">
+    <rect x="80" y="70" width="1040" height="490" rx="18" fill="#0b1220" stroke="rgba(102,126,234,0.55)"/>
+  </g>
+
+  <text x="120" y="140" fill="#e5e7eb" font-family="Segoe UI, system-ui, -apple-system" font-size="44" font-weight="700">BountyGraph Demo</text>
+  <text x="120" y="190" fill="#cbd5e1" font-family="Segoe UI, system-ui, -apple-system" font-size="24">Live Solana Connection + Transaction Inspector</text>
+
+  <circle cx="145" cy="255" r="10" fill="#22c55e"/>
+  <text x="170" y="262" fill="#e5e7eb" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="18">Connected to Solana devnet</text>
+
+  <rect x="120" y="300" width="960" height="70" rx="12" fill="rgba(102,126,234,0.18)" stroke="rgba(102,126,234,0.45)"/>
+  <text x="145" y="342" fill="#c7d2fe" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="18">rpc: https://api.devnet.solana.com</text>
+
+  <rect x="120" y="395" width="960" height="92" rx="14" fill="rgba(15,23,42,0.7)" stroke="rgba(148,163,184,0.25)"/>
+  <text x="145" y="435" fill="#e5e7eb" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="18">Cluster version: 1.xx.x    Latest blockhash: 9x...Qk</text>
+
+  <text x="120" y="535" fill="#94a3b8" font-family="Segoe UI, system-ui, -apple-system" font-size="18">(Screenshot illustration — open https://neogenuity.github.io/bountygraph/ for the live page)</text>
+</svg>
