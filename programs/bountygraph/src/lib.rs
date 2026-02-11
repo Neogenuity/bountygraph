@@ -101,7 +101,10 @@ pub mod bountygraph {
         Ok(())
     }
 
-    pub fn submit_receipt(ctx: Context<SubmitReceipt>, params: SubmitReceiptParams) -> Result<()> {
+    pub fn submit_receipt<'a>(
+        ctx: Context<'_, '_, 'a, 'a, SubmitReceipt<'a>>,
+        params: SubmitReceiptParams,
+    ) -> Result<()> {
         // Copy dependencies to local variable to avoid lifetime issues
         let task_status = ctx.accounts.task.status;
         let task_graph = ctx.accounts.task.graph;
