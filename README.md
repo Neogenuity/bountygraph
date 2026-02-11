@@ -44,29 +44,29 @@ BountyGraph is a decentralized platform that enables agents to earn cryptographi
 
 ## Project Status
 
-🚀 **Phase 1 Complete: Core Architecture** | **Phase 2 In Progress: Testing & Devnet Validation**
+🚀 **Phase 1 Complete: Core Architecture** | 🧪 **Phase 2 In Progress: CI, Tests, and Devnet Validation**
 
 ### Implementation Status
 
 | Component | Status | Details |
 |-----------|--------|---------|
-| **On-Chain Program** | ✅ Complete | 4 PDAs, 4 instructions, 5 events, SPL escrow, 3-tier verification |
-| **REST API** | ✅ Complete | 9 endpoints, Helius integration points, worker profiles |
-| **Frontend UI** | ✅ Complete | Home, bounties listing, wallet integration, dark theme |
-| **Configuration** | ✅ Complete | Monorepo, Cargo, package.json, Anchor.toml, TypeScript |
-| **Unit Tests** | ⏳ In Progress | Anchor test suite, API tests pending |
-| **Devnet Deployment** | ⏳ In Progress | Contract compilation validation |
-| **Integration Layer** | ⏳ Pending | ACR, AAP, SlotScribe, Agent Casino partnerships |
-| **Mainnet Readiness** | ⏳ Pending | Security audit, gas optimization |
+| **On-Chain Program** | ✅ Complete | Anchor program (4 PDAs, 4 core instructions, events, SPL escrow). Compiles in CI. |
+| **REST API** | ✅ Complete | Express REST API (bounties/receipts/graph/workers). Type-checks in CI; tests are present but some are non-blocking. |
+| **Frontend UI** | ✅ Complete | Next.js explorer UI builds in CI. |
+| **CI/CD** | ✅ Complete | GitHub Actions workflows for lint/build/test/security (+ optional devnet deploy job when secrets are set). |
+| **Unit/Integration Tests** | 🟡 Partial | Anchor + TS test suites exist (incl. e2e/dispute coverage). Some tests are scaffolded/mocked until devnet deployment is configured. |
+| **Devnet Deployment** | ⏳ In Progress | Automated deploy job exists but requires a funded `SOLANA_DEVNET_KEYPAIR` secret; manual deploy steps in `DEPLOYMENT.md`. |
+| **Partner Integrations** | ⏳ Pending | Planned: ACR (reputation), SlotScribe (trace hashing), Helius (event indexing/webhooks), Agent Casino (milestones). |
+| **Mainnet Readiness** | ⏳ Pending | Needs security review, production infra (DB + API deploy), and confirmed devnet E2E flow. |
 
-### Milestones
+### Milestones / Roadmap (Hackathon Timeline)
 
-- [x] **Phase 1 (Feb 10)**: Core architecture — on-chain program, API, UI scaffolding
-- [ ] **Phase 2 (Feb 11)**: Tests, validation, devnet deployment
-- [ ] **Phase 3 (Feb 11-12)**: Partner integrations (ACR, AAP, SlotScribe, Agent Casino)
-- [ ] **Phase 4 (Feb 12)**: Mainnet-beta launch
+- [x] **Phase 1 (Feb 10)**: Core architecture — on-chain program + API + UI scaffolding
+- [ ] **Phase 2 (Feb 11)**: CI green (lint/build), test scaffolding, devnet deploy + E2E validation
+- [ ] **Phase 3 (Feb 11–12)**: Partner integration adapters + webhook/event indexing
+- [ ] **Phase 4 (Feb 12)**: Production hardening (security pass + docs polish) and (optional) mainnet-beta deploy
 
-### Implementation Progress: 33% (Core Architecture Complete)
+### Implementation Progress: ~45% (Core + CI complete; devnet/E2E pending)
 
 ## Project Visibility & Monitoring
 
@@ -77,16 +77,16 @@ BountyGraph is a decentralized platform that enables agents to earn cryptographi
 - `README.md` — This file; implementation table above
 - `package.json` — Root workspace config
 - `Cargo.toml` — Rust build config
-- `.github/workflows/` — CI/CD pipelines (to be added)
+- `.github/workflows/` — CI/CD pipelines (lint/build/test/security/deploy)
 
-### Status Snapshot (Last Updated: Feb 10, 23:50 UTC)
-- **Code**: 1,632 LOC across 22 files
-- **Implementation**: 33% (core architecture)
-- **Tests**: 0% (pending Phase 2)
-- **Integrations**: 0% (pending Phase 3)
-- **Overall Hackathon Progress**: 15%
-- **Blockers**: None critical
-- **Deployment Ready**: Devnet validation pending
+### Status Snapshot (Last Updated: Feb 11, 2026 UTC)
+- **Code**: ~8,000 LOC across 45 tracked files
+- **Implementation**: ~45% (core + CI complete)
+- **Tests**: ~25% (scaffolded suites + CI wiring; devnet-backed E2E pending)
+- **Integrations**: 0% (Phase 3)
+- **Overall Hackathon Progress**: ~25%
+- **Blockers**: Devnet deploy keypair/secret + funded wallet required for true E2E
+- **Deployment Ready**: Local dev + CI ready; devnet validation pending
 
 ## Demo
 
