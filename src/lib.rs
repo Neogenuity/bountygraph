@@ -19,6 +19,18 @@ pub mod bountygraph {
     ) -> Result<()> {
         require!(milestone_count > 0 && milestone_count <= 10, BountyError::InvalidMilestoneCount);
         require!(total_amount > 0, BountyError::InvalidAmount);
+        require!(
+            !bounty_id.is_empty() && bounty_id.len() <= Bounty::MAX_ID_LEN,
+            BountyError::InvalidStringLength
+        );
+        require!(
+            !title.is_empty() && title.len() <= Bounty::MAX_TITLE_LEN,
+            BountyError::InvalidStringLength
+        );
+        require!(
+            !description.is_empty() && description.len() <= Bounty::MAX_DESCRIPTION_LEN,
+            BountyError::InvalidStringLength
+        );
 
         let bounty = &mut ctx.accounts.bounty;
         bounty.id = bounty_id;
@@ -69,6 +81,14 @@ pub mod bountygraph {
         let bounty = &ctx.accounts.bounty;
         require!(bounty.status == BountyStatus::Open, BountyError::BountyNotActive);
         require!(milestone_index < bounty.milestone_count, BountyError::InvalidMilestoneIndex);
+        require!(
+            !receipt_id.is_empty() && receipt_id.len() <= Receipt::MAX_ID_LEN,
+            BountyError::InvalidStringLength
+        );
+        require!(
+            !metadata_uri.is_empty() && metadata_uri.len() <= Receipt::MAX_METADATA_URI_LEN,
+            BountyError::InvalidStringLength
+        );
 
         let receipt = &mut ctx.accounts.receipt;
         receipt.id = receipt_id;
@@ -165,6 +185,11 @@ pub mod bountygraph {
         source_receipt_key: Pubkey,
         target_receipt_key: Pubkey,
     ) -> Result<()> {
+        require!(
+            !edge_id.is_empty() && edge_id.len() <= DependencyEdge::MAX_ID_LEN,
+            BountyError::InvalidStringLength
+        );
+
         let edge = &mut ctx.accounts.edge;
         edge.id = edge_id;
         edge.source_receipt = source_receipt_key;
@@ -185,40 +210,82 @@ pub mod bountygraph {
 
 #[account]
 pub struct Bounty {
-    pub id: String,                   // 32 bytes + 4
-    pub title: String,                // 32 bytes + 4
-    pub description: String,          // 256 bytes + 4
-    pub creator: Pubkey,              // 32 bytes
-    pub escrow_vault: Pubkey,         // 32 bytes
-    pub total_amount: u64,            // 8 bytes
-    pub released_amount: u64,         // 8 bytes
-    pub milestone_count: u8,          // 1 byte
-    pub completed_milestones: u8,     // 1 byte
-    pub status: BountyStatus,         // 1 byte
-    pub created_at: i64,              // 8 bytes
-    pub bump: u8,                     // 1 byte
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    pub creator: Pubkey,
+    pub escrow_vault: Pubkey,
+    pub total_amount: u64,
+    pub released_amount: u64,
+    pub milestone_count: u8,
+    pub completed_milestones: u8,
+    pub status: BountyStatus,
+    pub created_at: i64,
+    pub bump: u8,
+}
+
+impl Bounty {
+    pub const MAX_ID_LEN: usize = 32;
+    pub const MAX_TITLE_LEN: usize = 96;
+    pub const MAX_DESCRIPTION_LEN: usize = 512;
+
+    pub const INIT_SPACE: usize =
+        (4 + Self::MAX_ID_LEN)
+        + (4 + Self::MAX_TITLE_LEN)
+        + (4 + Self::MAX_DESCRIPTION_LEN)
+        + 32
+        + 32
+        + 8
+        + 8
+        + 1
+        + 1
+        + 1
+        + 8
+        + 1;
 }
 
 #[account]
 pub struct Receipt {
-    pub id: String,                   // 32 bytes + 4
-    pub bounty_key: Pubkey,           // 32 bytes
-    pub worker: Pubkey,               // 32 bytes
-    pub milestone_index: u8,          // 1 byte
-    pub artifact_hash: [u8; 32],      // 32 bytes
-    pub metadata_uri: String,         // 256 bytes + 4
-    pub status: ReceiptStatus,        // 1 byte
-    pub submitted_at: i64,            // 8 bytes
-    pub bump: u8,                     // 1 byte
+    pub id: String,
+    pub bounty_key: Pubkey,
+    pub worker: Pubkey,
+    pub milestone_index: u8,
+    pub artifact_hash: [u8; 32],
+    pub metadata_uri: String,
+    pub status: ReceiptStatus,
+    pub submitted_at: i64,
+    pub bump: u8,
+}
+
+impl Receipt {
+    pub const MAX_ID_LEN: usize = 32;
+    pub const MAX_METADATA_URI_LEN: usize = 200;
+
+    pub const INIT_SPACE: usize =
+        (4 + Self::MAX_ID_LEN)
+        + 32
+        + 32
+        + 1
+        + 32
+        + (4 + Self::MAX_METADATA_URI_LEN)
+        + 1
+        + 8
+        + 1;
 }
 
 #[account]
 pub struct DependencyEdge {
-    pub id: String,                   // 32 bytes + 4
-    pub source_receipt: Pubkey,       // 32 bytes
-    pub target_receipt: Pubkey,       // 32 bytes
-    pub created_at: i64,              // 8 bytes
-    pub bump: u8,                     // 1 byte
+    pub id: String,
+    pub source_receipt: Pubkey,
+    pub target_receipt: Pubkey,
+    pub created_at: i64,
+    pub bump: u8,
+}
+
+impl DependencyEdge {
+    pub const MAX_ID_LEN: usize = 32;
+
+    pub const INIT_SPACE: usize = (4 + Self::MAX_ID_LEN) + 32 + 32 + 8 + 1;
 }
 
 #[account]
@@ -243,7 +310,7 @@ pub struct CreateBounty<'info> {
     #[account(
         init,
         payer = creator,
-        space = 8 + 32 + 4 + 32 + 4 + 256 + 4 + 32 + 32 + 8 + 8 + 1 + 1 + 1 + 8 + 1,
+        space = 8 + Bounty::INIT_SPACE,
         seeds = [b"bounty", bounty_id.as_bytes()],
         bump
     )]
@@ -278,7 +345,7 @@ pub struct SubmitReceipt<'info> {
     #[account(
         init,
         payer = worker,
-        space = 8 + 32 + 4 + 32 + 32 + 1 + 32 + 256 + 4 + 1 + 8 + 1,
+        space = 8 + Receipt::INIT_SPACE,
         seeds = [b"receipt", receipt_id.as_bytes()],
         bump
     )]
@@ -317,7 +384,7 @@ pub struct CreateDependency<'info> {
     #[account(
         init,
         payer = creator,
-        space = 8 + 32 + 4 + 32 + 32 + 8 + 1,
+        space = 8 + DependencyEdge::INIT_SPACE,
         seeds = [b"edge", edge_id.as_bytes()],
         bump
     )]
@@ -329,7 +396,8 @@ pub struct CreateDependency<'info> {
 
 // ============ Enums ============
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum BountyStatus {
     Open = 0,
     Completed = 1,
@@ -342,7 +410,8 @@ impl Default for BountyStatus {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum ReceiptStatus {
     Pending = 0,
     Approved = 1,
@@ -408,4 +477,6 @@ pub enum BountyError {
     InvalidMilestoneIndex,
     #[msg("Receipt already verified")]
     ReceiptAlreadyVerified,
+    #[msg("Invalid string length")]
+    InvalidStringLength,
 }
