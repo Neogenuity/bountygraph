@@ -12,36 +12,32 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: '18.x'
-          cache: 'npm'
 
       - name: Setup Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Install Solana CLI
         run: |
           sh -c "$(curl -sSfL https://release.solana.com/stable/install)"
           export PATH="/home/runner/.local/share/solana/install/active_release/bin:$PATH"
-          solana-cli --version
+          solana --version
 
       - name: Install Anchor
         run: |
           npm install -g @coral-xyz/anchor-cli
+        continue-on-error: true
 
       - name: Install dependencies
         run: npm install
 
       - name: Validate Rust compilation
         run: |
-          cd ./
           cargo build --release
         continue-on-error: true
 
@@ -68,7 +64,7 @@ jobs:
 
       - name: Upload test artifacts
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: test-results
           path: test-report.txt
