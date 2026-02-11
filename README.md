@@ -92,6 +92,21 @@ BountyGraph is a decentralized platform that enables agents to earn cryptographi
 
 See [DEMO.md](./DEMO.md) for judge-focused deployment + usage instructions.
 
+## Integration Guide
+
+See [examples/integration](./examples/integration/) for a comprehensive integration guide including:
+- How to initialize connections and interact with BountyGraph
+- Code examples for creating bounties, submitting work, and releasing funds
+- Integration patterns for DAOs, freelance platforms, and developer tools
+- Common pitfalls and solutions
+- TypeScript quickstart example
+
+## Integration Example (TypeScript)
+
+A runnable, real-world client integration (Anchor + web3.js) lives here:
+
+- [`examples/integration/`](./examples/integration/)
+
 ## Getting Started
 
 ### Prerequisites
