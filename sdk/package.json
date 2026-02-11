@@ -1,0 +1,11 @@
+{
+  "name": "@neogenuity/bountygraph-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "dependencies": {
+    "@coral-xyz/anchor": "^0.29.0",
+    "@solana/web3.js": "^1.95.4"
+  }
+}
