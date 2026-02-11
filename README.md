@@ -88,6 +88,10 @@ BountyGraph is a decentralized platform that enables agents to earn cryptographi
 - **Blockers**: None critical
 - **Deployment Ready**: Devnet validation pending
 
+## Demo
+
+See [DEMO.md](./DEMO.md) for judge-focused deployment + usage instructions.
+
 ## Getting Started
 
 ### Prerequisites
