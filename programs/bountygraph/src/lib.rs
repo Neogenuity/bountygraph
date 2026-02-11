@@ -101,14 +101,14 @@ pub mod bountygraph {
         Ok(())
     }
 
-    pub fn submit_receipt<'a>(
-        ctx: Context<'_, '_, 'a, 'a, SubmitReceipt<'a>>,
-        params: SubmitReceiptParams,
-    ) -> Result<()> {
-        let task = &mut ctx.accounts.task;
+    pub fn submit_receipt(ctx: Context<SubmitReceipt>, params: SubmitReceiptParams) -> Result<()> {
+        // Copy dependencies to local variable to avoid lifetime issues
+        let task_status = ctx.accounts.task.status;
+        let task_graph = ctx.accounts.task.graph;
+        let dependencies = ctx.accounts.task.dependencies.clone();
 
         require!(
-            task.status == TaskStatus::Open,
+            task_status == TaskStatus::Open,
             BountyGraphError::TaskNotOpen
         );
         require!(!params.uri.is_empty(), BountyGraphError::InvalidUri);
@@ -118,15 +118,15 @@ pub mod bountygraph {
         );
 
         require!(
-            ctx.remaining_accounts.len() == task.dependencies.len(),
+            ctx.remaining_accounts.len() == dependencies.len(),
             BountyGraphError::MissingDependencyAccounts
         );
 
         for (i, dep_task_info) in ctx.remaining_accounts.iter().enumerate() {
-            let expected_dep_id = task.dependencies[i];
+            let expected_dep_id = dependencies[i];
             let dep_task: Account<Task> = Account::try_from(dep_task_info)?;
             require!(
-                dep_task.graph == task.graph,
+                dep_task.graph == task_graph,
                 BountyGraphError::InvalidDependency
             );
             require!(
@@ -139,6 +139,7 @@ pub mod bountygraph {
             );
         }
 
+        let task = &mut ctx.accounts.task;
         let receipt = &mut ctx.accounts.receipt;
         receipt.task = task.key();
         receipt.agent = ctx.accounts.agent.key();
