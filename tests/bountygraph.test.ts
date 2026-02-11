@@ -143,7 +143,7 @@ describe('BountyGraph Program Tests', () => {
 
   describe('Receipt Submission Tests', () => {
     let receiptId = 'receipt-' + Date.now();
-    let artifactHash = Buffer.from('a'.repeat(64));
+    let artifactHash = Buffer.alloc(32, 7);
 
     it('should submit a receipt with valid artifact hash', async function () {
       this.timeout(10000);

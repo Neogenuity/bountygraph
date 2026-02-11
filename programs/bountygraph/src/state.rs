@@ -19,6 +19,13 @@ pub enum TaskStatus {
     Completed,
 }
 
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
+pub enum DisputeStatus {
+    None,
+    Raised,
+    Resolved,
+}
+
 #[account]
 pub struct Task {
     pub graph: Pubkey,
@@ -26,9 +33,15 @@ pub struct Task {
     pub creator: Pubkey,
     pub reward_lamports: u64,
     pub status: TaskStatus,
+    pub dispute_status: DisputeStatus,
     pub dependencies: Vec<u64>,
     pub created_at_slot: u64,
     pub completed_by: Option<Pubkey>,
+    pub disputed_by: Option<Pubkey>,
+    pub dispute_raised_at_slot: u64,
+    pub resolved_by: Option<Pubkey>,
+    pub dispute_resolved_at_slot: u64,
+    pub worker_award_lamports: u64,
     pub bump: u8,
 }
 
@@ -36,11 +49,20 @@ impl Task {
     pub const SEED_PREFIX: &'static [u8] = b"task";
 
     pub fn space_for(dependencies: &Vec<u64>) -> usize {
-        // discriminator
-        // pub graph: Pubkey, pub task_id: u64, pub creator: Pubkey, pub reward_lamports: u64,
-        // pub status: enum(u8), pub dependencies: Vec<u64>, pub created_at_slot: u64,
-        // pub completed_by: Option<Pubkey>, pub bump: u8
-        let fixed = 32 + 8 + 32 + 8 + 1 + 8 + 1 + 1;
+        let fixed = 32
+            + 8
+            + 32
+            + 8
+            + 1
+            + 1
+            + 8
+            + (1 + 32)
+            + (1 + 32)
+            + 8
+            + (1 + 32)
+            + 8
+            + 8
+            + 1;
         let vec = 4 + dependencies.len() * 8;
         fixed + vec
     }
