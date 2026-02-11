@@ -1,14 +1,14 @@
 import * as anchor from "@coral-xyz/anchor";
 import { SystemProgram } from "@solana/web3.js";
-import { BOUNTYGRAPH_PROGRAM_ID } from "./programId";
-import { BOUNTYGRAPH_IDL } from "./idl/bountygraph";
+import { BOUNTYGRAPH_PROGRAM_ID } from "./programId.ts";
+import { BOUNTYGRAPH_IDL } from "./idl/bountygraph.ts";
 import {
   findDisputePda,
   findEscrowPda,
   findGraphPda,
   findReceiptPda,
   findTaskPda,
-} from "./pdas";
+} from "./pdas.ts";
 
 export type BountyGraphProgram = any;
 

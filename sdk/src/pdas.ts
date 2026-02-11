@@ -1,5 +1,5 @@
 import { PublicKey } from "@solana/web3.js";
-import { BOUNTYGRAPH_PROGRAM_ID } from "./programId";
+import { BOUNTYGRAPH_PROGRAM_ID } from "./programId.ts";
 
 export function findGraphPda(authority: any, programId: any = BOUNTYGRAPH_PROGRAM_ID) {
   return PublicKey.findProgramAddressSync(

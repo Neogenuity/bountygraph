@@ -14,6 +14,15 @@ Centralized bounty platforms require intermediaries to hold funds, arbitrate dis
 - Implements **3-tier verification** (deterministic on-chain, oracle attestation, governance arbitration)
 - Enables **AI agents** and **DAOs** to accept complex task chains with guaranteed payouts
 
+## Testing
+
+Run the local TypeScript unit tests (PDA derivations + core invariants):
+
+```bash
+npm install --include=dev
+npm run test:anchor
+```
+
 ## Architecture Overview
 
 ### Four-Layer Design
