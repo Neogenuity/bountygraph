@@ -17,6 +17,12 @@ import {
   getCurrentTimestamp,
   ErrorCode,
   ApiError,
+  wouldCreateCycle,
+  validateDependencyList,
+  topologicalSort,
+  calculateReputationDelta,
+  getReputationLevel,
+  formatBountyStatus,
 } from '../src/utils';
 
 describe('BountyGraph API Utilities', () => {
@@ -316,6 +322,282 @@ describe('BountyGraph API Utilities', () => {
         const error = new ApiError(code, 400, 'Test');
         assert.strictEqual(error.code, code);
       });
+    });
+  });
+
+  describe('DAG Cycle Detection', () => {
+    it('should detect direct self-reference cycle', () => {
+      const deps = new Map<string, string[]>();
+      const hasCycle = wouldCreateCycle('task-1', 'task-1', deps);
+      assert.ok(hasCycle, 'Should detect self-reference cycle');
+    });
+
+    it('should detect simple cycle (A -> B -> A)', () => {
+      const deps = new Map<string, string[]>([
+        ['task-B', ['task-A']],
+      ]);
+      const hasCycle = wouldCreateCycle('task-A', 'task-B', deps);
+      assert.ok(hasCycle, 'Should detect simple 2-node cycle');
+    });
+
+    it('should detect complex cycle (A -> B -> C -> A)', () => {
+      const deps = new Map<string, string[]>([
+        ['task-B', ['task-A']],
+        ['task-C', ['task-B']],
+      ]);
+      const hasCycle = wouldCreateCycle('task-A', 'task-C', deps);
+      assert.ok(hasCycle, 'Should detect 3-node cycle');
+    });
+
+    it('should allow valid DAG (A -> B, C -> B)', () => {
+      const deps = new Map<string, string[]>([
+        ['task-A', ['task-B']],
+      ]);
+      const hasCycle = wouldCreateCycle('task-C', 'task-B', deps);
+      assert.ok(!hasCycle, 'Should allow valid DAG structure');
+    });
+
+    it('should allow linear chain (A -> B -> C -> D)', () => {
+      const deps = new Map<string, string[]>([
+        ['task-A', ['task-B']],
+        ['task-B', ['task-C']],
+      ]);
+      const hasCycle = wouldCreateCycle('task-C', 'task-D', deps);
+      assert.ok(!hasCycle, 'Should allow linear chain');
+    });
+
+    it('should handle empty dependency map', () => {
+      const deps = new Map<string, string[]>();
+      const hasCycle = wouldCreateCycle('task-A', 'task-B', deps);
+      assert.ok(!hasCycle, 'Should handle empty dependencies');
+    });
+  });
+
+  describe('Dependency List Validation', () => {
+    it('should validate correct sorted dependency list', () => {
+      const deps = ['task-1', 'task-2', 'task-3'];
+      const error = validateDependencyList(deps);
+      assert.strictEqual(error, null, 'Should accept sorted list');
+    });
+
+    it('should reject unsorted dependency list', () => {
+      const deps = ['task-2', 'task-1', 'task-3'];
+      const error = validateDependencyList(deps);
+      assert.ok(error?.includes('sorted'), 'Should reject unsorted list');
+    });
+
+    it('should reject duplicate dependencies', () => {
+      const deps = ['task-1', 'task-1', 'task-2'];
+      const error = validateDependencyList(deps);
+      assert.ok(error?.includes('duplicate'), 'Should reject duplicates');
+    });
+
+    it('should reject non-string dependencies', () => {
+      const deps = ['task-1', 123 as any, 'task-3'];
+      const error = validateDependencyList(deps);
+      assert.ok(error?.includes('strings'), 'Should reject non-strings');
+    });
+
+    it('should reject non-array input', () => {
+      const error = validateDependencyList('not-an-array' as any);
+      assert.ok(error?.includes('array'), 'Should reject non-array');
+    });
+
+    it('should accept empty array', () => {
+      const error = validateDependencyList([]);
+      assert.strictEqual(error, null, 'Should accept empty array');
+    });
+  });
+
+  describe('Topological Sort', () => {
+    it('should sort simple linear dependency chain', () => {
+      const taskIds = ['task-1', 'task-2', 'task-3'];
+      const deps = new Map<string, string[]>([
+        ['task-1', ['task-2']],
+        ['task-2', ['task-3']],
+      ]);
+      const sorted = topologicalSort(taskIds, deps);
+      assert.deepStrictEqual(sorted, ['task-3', 'task-2', 'task-1']);
+    });
+
+    it('should sort diamond dependency graph', () => {
+      const taskIds = ['A', 'B', 'C', 'D'];
+      const deps = new Map<string, string[]>([
+        ['A', ['B', 'C']],
+        ['B', ['D']],
+        ['C', ['D']],
+      ]);
+      const sorted = topologicalSort(taskIds, deps);
+      assert.ok(sorted !== null, 'Should return valid sort');
+      assert.strictEqual(sorted![0], 'D', 'D should be first (no dependencies)');
+      assert.strictEqual(sorted![3], 'A', 'A should be last (depends on all)');
+    });
+
+    it('should detect cycle and return null', () => {
+      const taskIds = ['A', 'B', 'C'];
+      const deps = new Map<string, string[]>([
+        ['A', ['B']],
+        ['B', ['C']],
+        ['C', ['A']],
+      ]);
+      const sorted = topologicalSort(taskIds, deps);
+      assert.strictEqual(sorted, null, 'Should return null for cyclic graph');
+    });
+
+    it('should handle tasks with no dependencies', () => {
+      const taskIds = ['A', 'B', 'C'];
+      const deps = new Map<string, string[]>();
+      const sorted = topologicalSort(taskIds, deps);
+      assert.strictEqual(sorted?.length, 3, 'Should return all tasks');
+    });
+
+    it('should handle single task', () => {
+      const taskIds = ['A'];
+      const deps = new Map<string, string[]>();
+      const sorted = topologicalSort(taskIds, deps);
+      assert.deepStrictEqual(sorted, ['A']);
+    });
+  });
+
+  describe('Reputation Calculation', () => {
+    it('should calculate base reputation points', () => {
+      const data = {
+        bountyValue: 1000000,
+        completedOnTime: false,
+        verificationTier: 'schema' as const,
+        complexityScore: 1,
+      };
+      const delta = calculateReputationDelta(data);
+      assert.ok(delta >= 10, 'Should have at least base points');
+    });
+
+    it('should add on-time bonus', () => {
+      const onTimeData = {
+        bountyValue: 1000000,
+        completedOnTime: true,
+        verificationTier: 'schema' as const,
+        complexityScore: 1,
+      };
+      const lateData = { ...onTimeData, completedOnTime: false };
+
+      const onTimeDelta = calculateReputationDelta(onTimeData);
+      const lateDelta = calculateReputationDelta(lateData);
+
+      assert.strictEqual(onTimeDelta - lateDelta, 3, 'On-time bonus should be 3 points');
+    });
+
+    it('should vary by verification tier', () => {
+      const baseData = {
+        bountyValue: 1000000,
+        completedOnTime: false,
+        complexityScore: 1,
+      };
+
+      const schemaDelta = calculateReputationDelta({
+        ...baseData,
+        verificationTier: 'schema' as const,
+      });
+      const oracleDelta = calculateReputationDelta({
+        ...baseData,
+        verificationTier: 'oracle' as const,
+      });
+      const optimisticDelta = calculateReputationDelta({
+        ...baseData,
+        verificationTier: 'optimistic' as const,
+      });
+
+      assert.ok(oracleDelta > schemaDelta, 'Oracle should give more points than schema');
+      assert.ok(optimisticDelta > schemaDelta, 'Optimistic should give more points than schema');
+      assert.ok(oracleDelta > optimisticDelta, 'Oracle should give most points');
+    });
+
+    it('should scale with bounty value', () => {
+      const lowValueData = {
+        bountyValue: 1000000, // 0.001 SOL
+        completedOnTime: false,
+        verificationTier: 'schema' as const,
+        complexityScore: 1,
+      };
+      const highValueData = {
+        ...lowValueData,
+        bountyValue: 1000000000, // 1 SOL
+      };
+
+      const lowDelta = calculateReputationDelta(lowValueData);
+      const highDelta = calculateReputationDelta(highValueData);
+
+      assert.ok(highDelta > lowDelta, 'High-value bounties should give more points');
+    });
+
+    it('should cap complexity bonus at 5', () => {
+      const lowComplexity = {
+        bountyValue: 1000000,
+        completedOnTime: false,
+        verificationTier: 'schema' as const,
+        complexityScore: 1,
+      };
+      const highComplexity = { ...lowComplexity, complexityScore: 10 };
+
+      const lowDelta = calculateReputationDelta(lowComplexity);
+      const highDelta = calculateReputationDelta(highComplexity);
+
+      assert.ok(highDelta - lowDelta <= 5, 'Complexity bonus should be capped at 5');
+    });
+  });
+
+  describe('Reputation Level System', () => {
+    it('should return Novice for low points', () => {
+      const level = getReputationLevel(0);
+      assert.strictEqual(level.level, 1);
+      assert.strictEqual(level.name, 'Novice');
+    });
+
+    it('should return Apprentice for 50+ points', () => {
+      const level = getReputationLevel(50);
+      assert.strictEqual(level.level, 2);
+      assert.strictEqual(level.name, 'Apprentice');
+    });
+
+    it('should return Master for 1000+ points', () => {
+      const level = getReputationLevel(1000);
+      assert.strictEqual(level.level, 5);
+      assert.strictEqual(level.name, 'Master');
+    });
+
+    it('should return Grandmaster for 2500+ points', () => {
+      const level = getReputationLevel(2500);
+      assert.strictEqual(level.level, 6);
+      assert.strictEqual(level.name, 'Grandmaster');
+    });
+
+    it('should provide next level threshold', () => {
+      const level = getReputationLevel(100);
+      assert.ok(level.nextLevelPoints > 100, 'Should provide next level points');
+    });
+
+    it('should handle max level gracefully', () => {
+      const level = getReputationLevel(10000);
+      assert.strictEqual(level.level, 6);
+      assert.strictEqual(level.nextLevelPoints, Infinity);
+    });
+  });
+
+  describe('Bounty Status Formatting', () => {
+    it('should format common status values', () => {
+      assert.strictEqual(formatBountyStatus('open'), 'Open for Workers');
+      assert.strictEqual(formatBountyStatus('in_progress'), 'In Progress');
+      assert.strictEqual(formatBountyStatus('completed'), 'Completed');
+      assert.strictEqual(formatBountyStatus('disputed'), 'Under Dispute');
+    });
+
+    it('should handle case insensitivity', () => {
+      assert.strictEqual(formatBountyStatus('OPEN'), 'Open for Workers');
+      assert.strictEqual(formatBountyStatus('OpEn'), 'Open for Workers');
+    });
+
+    it('should return unknown status as-is', () => {
+      const unknown = 'unknown_status';
+      assert.strictEqual(formatBountyStatus(unknown), unknown);
     });
   });
 });

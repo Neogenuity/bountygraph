@@ -276,3 +276,234 @@ export function formatErrorLog(error: any, context: string): string {
   }
   return `[${context}] ${error?.message || String(error)}`;
 }
+
+// ============ DAG Validation Functions ============
+
+/**
+ * Check if adding a dependency would create a cycle in the task graph
+ * Uses DFS to detect cycles
+ */
+export function wouldCreateCycle(
+  taskId: string,
+  newDependencyId: string,
+  existingDependencies: Map<string, string[]>
+): boolean {
+  // If the new dependency is the task itself, that's a cycle
+  if (taskId === newDependencyId) {
+    return true;
+  }
+
+  // Check if adding this dependency would create a cycle
+  // by seeing if newDependencyId can reach taskId through existing dependencies
+  const visited = new Set<string>();
+  const recursionStack = new Set<string>();
+
+  function hasCycle(currentId: string): boolean {
+    if (recursionStack.has(currentId)) {
+      return true; // Found a cycle
+    }
+    if (visited.has(currentId)) {
+      return false; // Already checked this path
+    }
+
+    visited.add(currentId);
+    recursionStack.add(currentId);
+
+    const deps = existingDependencies.get(currentId) || [];
+    for (const depId of deps) {
+      if (hasCycle(depId)) {
+        return true;
+      }
+    }
+
+    recursionStack.delete(currentId);
+    return false;
+  }
+
+  // Build temporary graph with the new edge
+  const tempDeps = new Map(existingDependencies);
+  const currentDeps = tempDeps.get(taskId) || [];
+  tempDeps.set(taskId, [...currentDeps, newDependencyId]);
+
+  // Check if the new graph has a cycle starting from taskId
+  return hasCycle(taskId);
+}
+
+/**
+ * Validate that a dependency list has no duplicates and is sorted
+ */
+export function validateDependencyList(dependencies: string[]): string | null {
+  if (!Array.isArray(dependencies)) {
+    return 'dependencies must be an array';
+  }
+
+  const seen = new Set<string>();
+  let prev: string | null = null;
+
+  for (const dep of dependencies) {
+    if (typeof dep !== 'string') {
+      return 'all dependency IDs must be strings';
+    }
+    if (seen.has(dep)) {
+      return `duplicate dependency: ${dep}`;
+    }
+    if (prev && dep <= prev) {
+      return 'dependencies must be sorted in ascending order';
+    }
+    seen.add(dep);
+    prev = dep;
+  }
+
+  return null;
+}
+
+/**
+ * Topological sort of tasks based on dependencies
+ * Returns sorted task IDs or null if there's a cycle
+ */
+export function topologicalSort(
+  taskIds: string[],
+  dependencies: Map<string, string[]>
+): string[] | null {
+  const inDegree = new Map<string, number>();
+  const adjList = new Map<string, string[]>();
+
+  // Initialize
+  for (const taskId of taskIds) {
+    inDegree.set(taskId, 0);
+    adjList.set(taskId, []);
+  }
+
+  // Build graph
+  for (const [taskId, deps] of dependencies.entries()) {
+    for (const depId of deps) {
+      if (!taskIds.includes(depId)) continue; // Skip external dependencies
+      const children = adjList.get(depId) || [];
+      children.push(taskId);
+      adjList.set(depId, children);
+      inDegree.set(taskId, (inDegree.get(taskId) || 0) + 1);
+    }
+  }
+
+  // Kahn's algorithm
+  const queue: string[] = [];
+  const result: string[] = [];
+
+  // Find all nodes with in-degree 0
+  for (const [taskId, degree] of inDegree.entries()) {
+    if (degree === 0) {
+      queue.push(taskId);
+    }
+  }
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    result.push(current);
+
+    const children = adjList.get(current) || [];
+    for (const child of children) {
+      const newDegree = (inDegree.get(child) || 0) - 1;
+      inDegree.set(child, newDegree);
+      if (newDegree === 0) {
+        queue.push(child);
+      }
+    }
+  }
+
+  // If result doesn't contain all tasks, there's a cycle
+  return result.length === taskIds.length ? result : null;
+}
+
+// ============ Reputation & Scoring Functions ============
+
+export interface BountyCompletionData {
+  bountyValue: number;
+  completedOnTime: boolean;
+  verificationTier: 'schema' | 'oracle' | 'optimistic';
+  complexityScore: number; // 1-5
+}
+
+/**
+ * Calculate reputation delta for a completed bounty
+ */
+export function calculateReputationDelta(data: BountyCompletionData): number {
+  let delta = 10; // Base points
+
+  // Complexity bonus (1-5 points)
+  delta += Math.min(Math.max(data.complexityScore, 1), 5);
+
+  // On-time bonus (3 points)
+  if (data.completedOnTime) {
+    delta += 3;
+  }
+
+  // Verification tier bonus
+  switch (data.verificationTier) {
+    case 'schema':
+      delta += 2;
+      break;
+    case 'oracle':
+      delta += 5;
+      break;
+    case 'optimistic':
+      delta += 3;
+      break;
+  }
+
+  // Value-based scaling (up to 5 bonus points for high-value bounties)
+  if (data.bountyValue >= 1000000000) { // 1 SOL in lamports
+    delta += 5;
+  } else if (data.bountyValue >= 100000000) { // 0.1 SOL
+    delta += 3;
+  } else if (data.bountyValue >= 10000000) { // 0.01 SOL
+    delta += 1;
+  }
+
+  return delta;
+}
+
+/**
+ * Calculate worker reputation level from total points
+ */
+export function getReputationLevel(points: number): {
+  level: number;
+  name: string;
+  nextLevelPoints: number;
+} {
+  const levels = [
+    { level: 1, name: 'Novice', threshold: 0 },
+    { level: 2, name: 'Apprentice', threshold: 50 },
+    { level: 3, name: 'Journeyman', threshold: 150 },
+    { level: 4, name: 'Expert', threshold: 400 },
+    { level: 5, name: 'Master', threshold: 1000 },
+    { level: 6, name: 'Grandmaster', threshold: 2500 },
+  ];
+
+  for (let i = levels.length - 1; i >= 0; i--) {
+    if (points >= levels[i].threshold) {
+      const nextLevel = levels[i + 1];
+      return {
+        level: levels[i].level,
+        name: levels[i].name,
+        nextLevelPoints: nextLevel ? nextLevel.threshold : Infinity,
+      };
+    }
+  }
+
+  return levels[0];
+}
+
+/**
+ * Format bounty status for display
+ */
+export function formatBountyStatus(status: string): string {
+  const statusMap: { [key: string]: string } = {
+    'open': 'Open for Workers',
+    'in_progress': 'In Progress',
+    'completed': 'Completed',
+    'disputed': 'Under Dispute',
+    'resolved': 'Dispute Resolved',
+    'cancelled': 'Cancelled',
+  };
+  return statusMap[status.toLowerCase()] || status;
+}
