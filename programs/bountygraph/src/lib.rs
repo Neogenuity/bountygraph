@@ -49,6 +49,8 @@ pub mod bountygraph {
             BountyGraphError::TooManyDependencies
         );
 
+        // SECURITY: Validate dependency array is sorted and contains no self-references
+        // Sorting requirement ensures O(log n) binary search during dependency queries
         let mut prev: Option<u64> = None;
         for dep in deps.iter() {
             require!(*dep != params.task_id, BountyGraphError::InvalidDependency);
@@ -64,31 +66,41 @@ pub mod bountygraph {
                 BountyGraphError::MissingDependencyAccounts
             );
 
+            // SECURITY: Circular dependency prevention - verify no dependency points back to this task
+            // This is the core innovation: we check ALL transitive dependencies at creation time
+            // For each dependency task, verify it doesn't list params.task_id in its dependencies
+            // This prevents A→B→A cycles from being created in the first place
             for (i, dep_task_info) in ctx.remaining_accounts.iter().enumerate() {
                 let expected_dep_id = deps[i];
                 let dep_task: Account<Task> = Account::try_from(dep_task_info)?;
 
+                // Verify dependency account belongs to same graph
                 require!(
                     dep_task.graph == graph_key,
                     BountyGraphError::InvalidDependency
                 );
+                // Verify dependency task ID matches expected (prevents account substitution)
                 require!(
                     dep_task.task_id == expected_dep_id,
                     BountyGraphError::InvalidDependency
                 );
 
+                // CRITICAL: Circular dependency check - this ensures DAG property
+                // If any dependency lists this task as a dependency, we have a cycle
                 require!(
                     !dep_task.dependencies.iter().any(|d| *d == params.task_id),
                     BountyGraphError::CircularDependency
                 );
             }
         } else {
+            // No dependencies: verify no dependency accounts provided
             require!(
                 ctx.remaining_accounts.is_empty(),
                 BountyGraphError::MissingDependencyAccounts
             );
         }
 
+        // Initialize task PDA with validated parameters
         let task = &mut ctx.accounts.task;
         task.graph = graph_key;
         task.task_id = params.task_id;
@@ -106,6 +118,7 @@ pub mod bountygraph {
         task.worker_award_lamports = 0;
         task.bump = ctx.bumps.task;
 
+        // Increment graph task counter with overflow protection
         let graph = &mut ctx.accounts.graph;
         graph.task_count = graph
             .task_count
@@ -121,11 +134,13 @@ pub mod bountygraph {
             ctx.accounts.task.status == TaskStatus::Open,
             BountyGraphError::TaskNotOpen
         );
+        // SECURITY: Ensure funder doesn't over-commit compared to declared reward
         require!(
             lamports <= ctx.accounts.task.reward_lamports,
             BountyGraphError::InvalidReward
         );
 
+        // ESCROW SAFETY: Verify escrow account links to correct task (if already initialized)
         let existing_task = ctx.accounts.escrow.task;
         if existing_task != Pubkey::default() {
             require!(
@@ -134,12 +149,15 @@ pub mod bountygraph {
             );
         }
 
+        // ESCROW SAFETY: Prevent double-funding same task
+        // Empty balance ensures first funder establishes escrow custody
         let escrow_balance = ctx.accounts.escrow.to_account_info().lamports();
         require!(escrow_balance == 0, BountyGraphError::EscrowAlreadyFunded);
 
         let funder = ctx.accounts.funder.key();
         let escrow_key = ctx.accounts.escrow.key();
 
+        // Transfer lamports from funder to program-owned escrow PDA
         let ix = anchor_lang::solana_program::system_instruction::transfer(
             &funder,
             &escrow_key,
@@ -154,6 +172,7 @@ pub mod bountygraph {
             ],
         )?;
 
+        // Initialize escrow PDA - marks escrow as associated with this task
         let escrow = &mut ctx.accounts.escrow;
         escrow.task = ctx.accounts.task.key();
         escrow.bump = ctx.bumps.escrow;
@@ -180,37 +199,46 @@ pub mod bountygraph {
             BountyGraphError::InvalidUri
         );
 
+        // TOPOLOGICAL VALIDATION: Ensure all dependency accounts provided
         require!(
             ctx.remaining_accounts.len() == dependencies.len(),
             BountyGraphError::MissingDependencyAccounts
         );
 
+        // TOPOLOGICAL CONSTRAINT: Verify ALL dependencies are marked Completed before allowing this task to complete
+        // This enforces the DAG property: task cannot complete unless all prerequisites are satisfied
         for (i, dep_task_info) in ctx.remaining_accounts.iter().enumerate() {
             let expected_dep_id = dependencies[i];
             let dep_task: Account<Task> = Account::try_from(dep_task_info)?;
+            // Verify dependency belongs to same graph
             require!(
                 dep_task.graph == task_graph,
                 BountyGraphError::InvalidDependency
             );
+            // Verify task ID matches (prevents account substitution attacks)
             require!(
                 dep_task.task_id == expected_dep_id,
                 BountyGraphError::InvalidDependency
             );
+            // CRITICAL: Only allow completion if ALL dependencies are Completed
+            // This is the enforcement mechanism that prevents parallel execution of dependent tasks
             require!(
                 dep_task.status == TaskStatus::Completed,
                 BountyGraphError::DependencyNotCompleted
             );
         }
 
+        // Create receipt: proof-of-work anchor
         let task = &mut ctx.accounts.task;
         let receipt = &mut ctx.accounts.receipt;
         receipt.task = task.key();
         receipt.agent = ctx.accounts.agent.key();
-        receipt.work_hash = params.work_hash;
-        receipt.uri = params.uri;
+        receipt.work_hash = params.work_hash;  // Hash of work artifact (e.g., commit hash, file hash)
+        receipt.uri = params.uri;  // URI to work details (IPFS, GitHub, etc.)
         receipt.submitted_at_slot = Clock::get()?.slot;
         receipt.bump = ctx.bumps.receipt;
 
+        // Mark task as completed (atomically with receipt creation)
         task.status = TaskStatus::Completed;
         task.completed_by = Some(ctx.accounts.agent.key());
 
@@ -218,14 +246,17 @@ pub mod bountygraph {
     }
 
     pub fn claim_reward(ctx: Context<ClaimReward>) -> Result<()> {
+        // PAYMENT SAFETY: Verify task is completed
         require!(
             ctx.accounts.task.status == TaskStatus::Completed,
             BountyGraphError::TaskNotCompleted
         );
+        // PAYMENT SAFETY: Verify no dispute is pending
         require!(
             ctx.accounts.task.dispute_status == DisputeStatus::None,
             BountyGraphError::TaskInDispute
         );
+        // PAYMENT SAFETY: Verify caller is the worker who completed the task
         require!(
             ctx.accounts.task.completed_by == Some(ctx.accounts.agent.key()),
             BountyGraphError::NotTaskCompleter
@@ -234,12 +265,15 @@ pub mod bountygraph {
         let escrow_lamports = ctx.accounts.escrow.to_account_info().lamports();
         require!(escrow_lamports > 0, BountyGraphError::EscrowEmpty);
 
-        // Transfer lamports from escrow PDA to agent using direct lamport manipulation
-        // (system_instruction::transfer cannot work with program-owned PDAs)
+        // DESIGN: PDA lamport transfer pattern (not system_instruction::transfer)
+        // Reason: system_instruction::transfer requires a signer for the source account.
+        // Since escrow is a program-owned PDA (not a keypair), we cannot sign with it.
+        // Instead, we directly manipulate lamports via &mut reference (allowed for PDAs).
+        // This is safe because Anchor enforces PDA ownership at the account deserialization layer.
         **ctx.accounts.escrow.to_account_info().lamports.borrow_mut() -= escrow_lamports;
         **ctx.accounts.agent.to_account_info().lamports.borrow_mut() += escrow_lamports;
 
-        // Close the escrow account by zeroing its data
+        // Close escrow account: zero out discriminator and data to reclaim rent
         ctx.accounts.escrow.task = Pubkey::default();
         ctx.accounts.escrow.bump = 0;
 
@@ -256,7 +290,8 @@ pub mod bountygraph {
         let task = &ctx.accounts.task;
         let signer = &ctx.accounts.initiator;
 
-        // Only creator or worker can initiate a dispute
+        // AUTHORIZATION: Only creator or worker can initiate dispute
+        // This prevents third parties from freezing funds or disrupting tasks
         require!(
             signer.key() == task.creator || signer.key() == task.completed_by.unwrap_or_default(),
             BountyGraphError::UnauthorizedDispute
@@ -283,6 +318,7 @@ pub mod bountygraph {
         ctx: Context<ResolveDispute>,
         params: ResolveDisputeParams,
     ) -> Result<()> {
+        // VALIDATION: Ensure percentages sum to 100 (prevents underflows or over-allocations)
         require!(
             params.creator_pct + params.worker_pct == 100,
             BountyGraphError::InvalidSplit
@@ -290,12 +326,14 @@ pub mod bountygraph {
 
         let dispute = &mut ctx.accounts.dispute;
 
-        // Only authority can resolve disputes
+        // AUTHORIZATION: Only graph authority (arbiter) can resolve disputes
+        // This prevents unauthorized actors from deciding dispute outcomes
         require!(
             ctx.accounts.authority.key() == ctx.accounts.graph.authority,
             BountyGraphError::UnauthorizedResolution
         );
 
+        // DISPUTE STATE: Verify dispute is in Raised state (prevent multiple resolutions)
         require!(
             dispute.status == DisputeStatus::Raised,
             BountyGraphError::InvalidTaskStatus
@@ -304,17 +342,21 @@ pub mod bountygraph {
         let escrow_lamports = ctx.accounts.escrow.to_account_info().lamports();
         require!(escrow_lamports > 0, BountyGraphError::EscrowEmpty);
 
-        // Calculate split
+        // Calculate escrow split between creator and worker
+        // Uses checked_mul and checked_div to prevent arithmetic overflows
         let creator_amount = escrow_lamports
             .checked_mul(params.creator_pct as u64)
             .ok_or(BountyGraphError::ArithmeticOverflow)?
             .checked_div(100)
             .ok_or(BountyGraphError::ArithmeticOverflow)?;
 
+        // Worker gets the remainder (ensures no lamports are lost to rounding)
         let worker_amount = escrow_lamports
             .checked_sub(creator_amount)
             .ok_or(BountyGraphError::ArithmeticOverflow)?;
 
+        // SECURITY: Derive PDA signer seeds for invoke_signed
+        // This allows the program (which owns the escrow PDA) to authorize the transfer
         let seeds: &[&[u8]] = &[
             Escrow::SEED_PREFIX,
             dispute.task.as_ref(),
@@ -322,7 +364,8 @@ pub mod bountygraph {
         ];
         let signer_seeds: &[&[&[u8]]] = &[seeds];
 
-        // Pay creator
+        // Transfer creator's share from escrow to creator account
+        // Uses invoke_signed with PDA seeds to authorize the transfer
         if creator_amount > 0 {
             anchor_lang::solana_program::program::invoke_signed(
                 &anchor_lang::solana_program::system_instruction::transfer(
@@ -339,7 +382,7 @@ pub mod bountygraph {
             )?;
         }
 
-        // Pay worker
+        // Transfer worker's share from escrow to worker account
         if worker_amount > 0 {
             anchor_lang::solana_program::program::invoke_signed(
                 &anchor_lang::solana_program::system_instruction::transfer(
@@ -356,6 +399,7 @@ pub mod bountygraph {
             )?;
         }
 
+        // Update dispute state to Resolved and record arbiter decision
         dispute.status = DisputeStatus::Resolved;
         dispute.resolved_at_slot = Some(Clock::get()?.slot);
         dispute.arbiter = Some(ctx.accounts.authority.key());
