@@ -39,6 +39,19 @@ describe("bountygraph SDK helpers", () => {
     expect(t1.toBase58()).to.eq(t2.toBase58());
   });
 
+  it("rejects unsafe or negative taskId numbers", () => {
+    const graph = Keypair.generate().publicKey;
+    expect(() => findTaskPda(graph, -1, PROGRAM_ID)).to.throw(/Invalid taskId number/);
+    expect(() => findTaskPda(graph, Number.MAX_SAFE_INTEGER + 1, PROGRAM_ID)).to.throw(
+      /Invalid taskId number/
+    );
+  });
+
+  it("rejects negative taskId bigints", () => {
+    const graph = Keypair.generate().publicKey;
+    expect(() => findTaskPda(graph, -5n, PROGRAM_ID)).to.throw(/Invalid taskId bigint/);
+  });
+
   it("derives unique task PDAs for different taskIds", () => {
     const graph = Keypair.generate().publicKey;
     const ids = [1n, 2n, 3n, 999n, 1_000_000n];

@@ -13,7 +13,17 @@ export function findTaskPda(
   taskId: bigint | number,
   programId: any = BOUNTYGRAPH_PROGRAM_ID
 ) {
-  const id = typeof taskId === "bigint" ? taskId : BigInt(taskId);
+  let id: bigint;
+  if (typeof taskId === "number") {
+    if (!Number.isSafeInteger(taskId) || taskId < 0) {
+      throw new Error(`Invalid taskId number: ${taskId}`);
+    }
+    id = BigInt(taskId);
+  } else {
+    if (taskId < 0n) throw new Error(`Invalid taskId bigint: ${taskId.toString()}`);
+    id = taskId;
+  }
+
   const le = Buffer.alloc(8);
   le.writeBigUInt64LE(id);
   return PublicKey.findProgramAddressSync(
