@@ -2,6 +2,8 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 use solana_program::clock::Clock;
 
+const MAX_VERIFIER_NOTE_LEN: usize = 280;
+
 declare_id!("BGRPHFnG8z7gxJnefVh3Y7LV9TjTuN2hfQdqzN9vNS5A");
 
 #[program]
@@ -111,21 +113,50 @@ pub mod bountygraph {
         Ok(())
     }
 
+    pub fn initialize_worker_profile(ctx: Context<InitializeWorkerProfile>) -> Result<()> {
+        let profile = &mut ctx.accounts.worker_profile;
+        profile.worker = ctx.accounts.worker.key();
+        profile.completed_receipts = 0;
+        profile.rejected_receipts = 0;
+        profile.total_earnings = 0;
+        profile.reputation_score = 0;
+        profile.created_at = Clock::get()?.unix_timestamp;
+        profile.bump = ctx.bumps.worker_profile;
+        Ok(())
+    }
+
     /// Verify a receipt and release milestone payout
     pub fn verify_receipt(
         ctx: Context<VerifyReceipt>,
         approved: bool,
         verifier_note: String,
     ) -> Result<()> {
+        require!(verifier_note.len() <= MAX_VERIFIER_NOTE_LEN, BountyError::InvalidStringLength);
+
         let receipt = &mut ctx.accounts.receipt;
         let bounty = &mut ctx.accounts.bounty;
 
         require!(receipt.status == ReceiptStatus::Pending, BountyError::ReceiptAlreadyVerified);
         require!(bounty.status == BountyStatus::Open, BountyError::BountyNotActive);
 
+        let profile = &mut ctx.accounts.worker_profile;
+        if profile.worker == Pubkey::default() {
+            profile.worker = receipt.worker;
+            profile.completed_receipts = 0;
+            profile.rejected_receipts = 0;
+            profile.total_earnings = 0;
+            profile.reputation_score = 0;
+            profile.created_at = Clock::get()?.unix_timestamp;
+            profile.bump = ctx.bumps.worker_profile;
+        }
+        require!(profile.worker == receipt.worker, BountyError::InvalidWorkerProfile);
+
         if approved {
             receipt.status = ReceiptStatus::Approved;
-            bounty.completed_milestones += 1;
+            bounty.completed_milestones = bounty
+                .completed_milestones
+                .checked_add(1)
+                .ok_or(BountyError::ArithmeticOverflow)?;
 
             // Calculate milestone payout
             let payout_amount = bounty.total_amount / bounty.milestone_count as u64;
@@ -153,7 +184,20 @@ pub mod bountygraph {
                 payout_amount,
             )?;
 
-            bounty.released_amount += payout_amount;
+            bounty.released_amount = bounty
+                .released_amount
+                .checked_add(payout_amount)
+                .ok_or(BountyError::ArithmeticOverflow)?;
+
+            profile.completed_receipts = profile
+                .completed_receipts
+                .checked_add(1)
+                .ok_or(BountyError::ArithmeticOverflow)?;
+            profile.total_earnings = profile
+                .total_earnings
+                .checked_add(payout_amount)
+                .ok_or(BountyError::ArithmeticOverflow)?;
+            profile.reputation_score = (profile.reputation_score + 10).min(10_000);
 
             // Close bounty if all milestones completed
             if bounty.completed_milestones == bounty.milestone_count {
@@ -168,6 +212,13 @@ pub mod bountygraph {
             });
         } else {
             receipt.status = ReceiptStatus::Rejected;
+
+            profile.rejected_receipts = profile
+                .rejected_receipts
+                .checked_add(1)
+                .ok_or(BountyError::ArithmeticOverflow)?;
+            profile.reputation_score = profile.reputation_score.saturating_sub(5);
+
             emit!(ReceiptRejected {
                 receipt_id: receipt.id.clone(),
                 bounty_id: bounty.id.clone(),
@@ -290,13 +341,17 @@ impl DependencyEdge {
 
 #[account]
 pub struct WorkerProfile {
-    pub worker: Pubkey,               // 32 bytes
-    pub completed_receipts: u32,      // 4 bytes
-    pub rejected_receipts: u32,       // 4 bytes
-    pub total_earnings: u64,          // 8 bytes
-    pub reputation_score: u32,        // 4 bytes (0-10000)
-    pub created_at: i64,              // 8 bytes
-    pub bump: u8,                     // 1 byte
+    pub worker: Pubkey,
+    pub completed_receipts: u32,
+    pub rejected_receipts: u32,
+    pub total_earnings: u64,
+    pub reputation_score: u32,
+    pub created_at: i64,
+    pub bump: u8,
+}
+
+impl WorkerProfile {
+    pub const INIT_SPACE: usize = 32 + 4 + 4 + 8 + 4 + 8 + 1;
 }
 
 // ============ Contexts ============
@@ -356,6 +411,23 @@ pub struct SubmitReceipt<'info> {
 }
 
 #[derive(Accounts)]
+pub struct InitializeWorkerProfile<'info> {
+    #[account(mut)]
+    pub worker: Signer<'info>,
+
+    #[account(
+        init,
+        payer = worker,
+        space = 8 + WorkerProfile::INIT_SPACE,
+        seeds = [b"worker", worker.key().as_ref()],
+        bump
+    )]
+    pub worker_profile: Account<'info, WorkerProfile>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
 pub struct VerifyReceipt<'info> {
     #[account(mut)]
     pub verifier: Signer<'info>,
@@ -366,6 +438,15 @@ pub struct VerifyReceipt<'info> {
     #[account(mut)]
     pub receipt: Account<'info, Receipt>,
 
+    #[account(
+        init_if_needed,
+        payer = verifier,
+        space = 8 + WorkerProfile::INIT_SPACE,
+        seeds = [b"worker", receipt.worker.as_ref()],
+        bump
+    )]
+    pub worker_profile: Account<'info, WorkerProfile>,
+
     #[account(mut)]
     pub escrow_vault: Account<'info, TokenAccount>,
 
@@ -373,6 +454,7 @@ pub struct VerifyReceipt<'info> {
     pub worker_token: Account<'info, TokenAccount>,
 
     pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
@@ -479,4 +561,8 @@ pub enum BountyError {
     ReceiptAlreadyVerified,
     #[msg("Invalid string length")]
     InvalidStringLength,
+    #[msg("Invalid worker profile")]
+    InvalidWorkerProfile,
+    #[msg("Arithmetic overflow")]
+    ArithmeticOverflow,
 }
