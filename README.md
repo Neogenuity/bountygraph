@@ -14,6 +14,128 @@ Centralized bounty platforms require intermediaries to hold funds, arbitrate dis
 - Implements **3-tier verification** (deterministic on-chain, oracle attestation, governance arbitration)
 - Enables **AI agents** and **DAOs** to accept complex task chains with guaranteed payouts
 
+## Quick Start
+
+### Installation
+```bash
+# Clone the repository
+git clone https://github.com/neogenuity/bountygraph.git
+cd bountygraph
+
+# Install Node.js dependencies
+npm install
+
+# Install Rust dependencies (if building on-chain program)
+cargo build --release
+```
+
+### Build & Test
+```bash
+# Build the Anchor program
+anchor build
+
+# Run all tests (unit + integration)
+anchor test
+
+# Run TypeScript tests
+npm run test:anchor
+```
+
+### Run Example
+```bash
+# Run the quick start example
+ts-node examples/quickstart.ts
+
+# This demonstrates:
+# - Connecting to Solana devnet
+# - Creating parent and child bounties
+# - Submitting proof-of-work
+# - Verifying dependencies
+```
+
+### Start Development Environment
+```bash
+# Terminal 1: Start API server
+cd api
+npm run dev
+# API available at http://localhost:3000
+
+# Terminal 2: Start UI 
+cd ui
+npm run dev
+# UI available at http://localhost:3001
+```
+
+## Use Cases
+
+BountyGraph solves real problems across multiple domains:
+
+- **DAO Task Management** — Multi-milestone governance with dependency verification
+- **Grant Programs** — Trustless milestone tracking and fund release
+- **Bug Bounty Platforms** — Atomic payouts for verified findings
+- **Freelance Work Coordination** — Multi-phase projects with escrow
+- **Agent Task Markets** — AI agents earning on-chain with cryptographic proof
+- **Protocol Integration** — Compose bounties as trustless primitives
+
+## Integration Guide
+
+### Quick Integration
+Add BountyGraph to your Solana project:
+
+```typescript
+import { BountyGraphSDK } from '@bountygraph/sdk';
+import { Connection, PublicKey } from '@solana/web3.js';
+
+const connection = new Connection('https://api.devnet.solana.com');
+const sdk = new BountyGraphSDK(connection, wallet);
+
+// Create a bounty
+const bounty = await sdk.createBounty({
+  title: 'Build Feature X',
+  reward: 1000000, // 0.001 SOL
+  verificationTier: 'deterministic',
+  maxDependencies: 5,
+});
+
+// Submit proof of work
+const receipt = await sdk.submitReceipt({
+  bountyId: bounty,
+  artifactHash: 'sha256:abc123...',
+  metadataUri: 'https://ipfs.io/ipfs/...',
+});
+
+// Verify and release escrow
+const payout = await sdk.verifyReceipt(receipt);
+console.log(`✓ Payout complete: ${payout} lamports`);
+```
+
+### Integration Points
+
+**For DAOs:**
+- Use as escrow layer for complex governance
+- Compose with governance tokens
+- Create trustless fund management
+
+**For Protocols:**
+- Call via CPI (cross-program invocation)
+- Use PDA helpers for address derivation
+- Integrate with custom verification logic
+
+**For Platforms:**
+- Use REST API for off-chain task management
+- Integrate Phantom wallet for signing
+- Query reputation data on-chain
+
+## Technical Highlights
+
+- ✅ **Full Anchor Program** — Production-ready with comprehensive error handling
+- ✅ **TypeScript SDK** — Type-safe client with PDA helpers
+- ✅ **REST API** — 9 endpoints with OpenAPI documentation
+- ✅ **Interactive Demo** — Live at https://neogenuity.github.io/bountygraph/
+- ✅ **Test Coverage** — Unit tests + integration tests + e2e scenarios
+- ✅ **Security Audit** — Cycle detection, deterministic verification, rent optimization
+- ✅ **CI/CD Pipeline** — GitHub Actions with automated testing and deployment
+
 ## Testing
 
 Run the local TypeScript unit tests (PDA derivations + core invariants):
@@ -50,6 +172,44 @@ npm run test:anchor
 │ - Agent reputation leaderboards                            │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+### PDA Structure
+
+**How BountyGraph Uses PDAs:**
+
+- **Graph PDA** — `["graph", authority.key]`
+  - Root account for all tasks in a graph
+  - Stores metadata, DAG configuration
+  - Enables concurrent task creation
+
+- **Task PDA** — `["task", graph.key, task_id]`
+  - Task metadata, status, dependencies
+  - Topological validation gates milestone unlock
+  - Escrow account reference
+
+- **Escrow PDA** — `["escrow", task.key]`
+  - Program-owned account holding bounty funds
+  - Released only when verification succeeds
+  - No human signers required
+
+- **Receipt PDA** — `["receipt", task.key, agent.key]`
+  - Proof-of-work: artifact hash + metadata
+  - Immutable record of completion
+  - Indexed for reputation queries
+
+- **Dispute PDA** — `["dispute", task.key, initiator.key]`
+  - Tracks dispute reason and resolution
+  - Weighted governance (creator_pct + worker_pct = 100)
+  - Time-locked appeals window
+
+### Dependency Verification
+
+1. **Child bounty work submitted** — Agent creates receipt transaction
+2. **Authority verifies child completion** — Receipt hash validated against spec
+3. **Dependency marked verified** — On-chain DAG state updated
+4. **Parent bounty can now be completed** — Unlock gate removed
+
+This ensures **causality**: phase 2 cannot complete until phase 1 is verified.
 
 ### Core PDA Patterns
 
