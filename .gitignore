@@ -18,6 +18,11 @@ out/
 dist/
 build/
 
+# Anchor/Solana
+.anchor/
+**/test-ledger/
+**/.solana/
+
 # IDE
 .vscode/
 .idea/
@@ -31,13 +36,6 @@ build/
 .env.local
 .env.*.local
 
-# Dependencies
-node_modules
-
-# Build output
-dist
-build
-
 # Database
 *.db
 *.sqlite
@@ -46,12 +44,3 @@ build
 # Logs
 *.log
 logs/
-
-# Editor directories and files
-.idea
-.vscode
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?

@@ -1,3 +1,7 @@
+[features]
+seeds = true
+skip-lint = false
+
 [provider]
 cluster = "devnet"
 wallet = "~/.config/solana/id.json"
