@@ -73,3 +73,38 @@ impl Receipt {
 
     pub const INIT_SPACE: usize = 32 + 32 + 32 + 4 + Self::MAX_URI_LEN + 8 + 1;
 }
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
+pub enum DisputeStatus {
+    Raised,
+    Resolved,
+}
+
+#[account]
+pub struct Dispute {
+    pub task: Pubkey,
+    pub creator: Pubkey,
+    pub worker: Pubkey,
+    pub raised_by: Pubkey,
+    pub reason: String,
+    pub status: DisputeStatus,
+    pub raised_at_slot: u64,
+    pub resolved_at_slot: Option<u64>,
+    pub arbiter: Option<Pubkey>,
+    pub creator_pct: Option<u8>,
+    pub worker_pct: Option<u8>,
+    pub bump: u8,
+}
+
+impl Dispute {
+    pub const SEED_PREFIX: &'static [u8] = b"dispute";
+    pub const MAX_REASON_LEN: usize = 500;
+
+    pub fn space_for(reason: &str) -> usize {
+        // discriminator + task + creator + worker + raised_by + reason + status + raised_at_slot
+        // + resolved_at_slot + arbiter + creator_pct + worker_pct + bump
+        let fixed = 32 + 32 + 32 + 32 + 1 + 8 + (1 + 32) + (1 + 8) + (1 + 1) + (1 + 1) + 1;
+        let reason_size = 4 + reason.len();
+        fixed + reason_size
+    }
+}

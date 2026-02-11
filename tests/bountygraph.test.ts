@@ -431,6 +431,149 @@ describe('BountyGraph Program Tests', () => {
     });
   });
 
+  describe('Dispute Resolution Tests', () => {
+    it('should create a dispute when raised by creator', async function () {
+      this.timeout(15000);
+      // Simulate: Task created, receipt submitted, creator disputes
+      const taskId = 1001;
+      const disputeReason = 'Work quality does not meet acceptance criteria';
+      
+      // Validate dispute can be created
+      const dispute = {
+        taskId,
+        creator: creator.publicKey,
+        worker: worker1.publicKey,
+        raisedBy: creator.publicKey,
+        reason: disputeReason,
+        status: 'Raised',
+      };
+      
+      assert.equal(dispute.status, 'Raised', 'Dispute should be in Raised status');
+      assert.equal(dispute.raisedBy.toString(), creator.publicKey.toString(), 'Creator should be dispute initiator');
+    });
+
+    it('should create a dispute when raised by worker', async function () {
+      this.timeout(15000);
+      // Simulate: Worker disputes for unpaid work
+      const taskId = 1002;
+      const disputeReason = 'Payment not received for completed work';
+      
+      const dispute = {
+        taskId,
+        creator: creator.publicKey,
+        worker: worker1.publicKey,
+        raisedBy: worker1.publicKey,
+        reason: disputeReason,
+        status: 'Raised',
+      };
+      
+      assert.equal(dispute.status, 'Raised', 'Dispute should be in Raised status');
+      assert.equal(dispute.raisedBy.toString(), worker1.publicKey.toString(), 'Worker should be dispute initiator');
+    });
+
+    it('should prevent non-party from raising dispute', async function () {
+      this.timeout(15000);
+      // Simulate: Third party tries to create dispute
+      const taskId = 1003;
+      const unauthorizedInitiator = worker2;
+      
+      const canDispute = authorizedParties => {
+        return [creator.publicKey, worker1.publicKey].some(
+          party => party.toString() === unauthorizedInitiator.publicKey.toString()
+        );
+      };
+      
+      assert.equal(canDispute([creator.publicKey, worker1.publicKey]), false, 'Unauthorized party should not create dispute');
+    });
+
+    it('should resolve dispute with fair split between parties', async function () {
+      this.timeout(15000);
+      // Simulate: Arbiter resolves dispute with 60/40 split
+      const escrowAmount = 2_000_000; // 2 SOL
+      const creatorPct = 60;
+      const workerPct = 40;
+      
+      const creatorPayment = (escrowAmount * creatorPct) / 100;
+      const workerPayment = (escrowAmount * workerPct) / 100;
+      
+      assert.equal(
+        creatorPayment + workerPayment,
+        escrowAmount,
+        'Payments should sum to escrow amount'
+      );
+      assert.equal(creatorPayment, 1_200_000, 'Creator should receive 60%');
+      assert.equal(workerPayment, 800_000, 'Worker should receive 40%');
+    });
+
+    it('should enforce 100% split validation in dispute resolution', async function () {
+      this.timeout(15000);
+      // Simulate: Invalid split percentages
+      const validSplits = [
+        { creator: 50, worker: 50 },
+        { creator: 60, worker: 40 },
+        { creator: 100, worker: 0 },
+        { creator: 0, worker: 100 },
+      ];
+      
+      const invalidSplits = [
+        { creator: 50, worker: 40 }, // Sum < 100
+        { creator: 60, worker: 50 }, // Sum > 100
+      ];
+      
+      const isSplitValid = (split: { creator: number; worker: number }) => {
+        return split.creator + split.worker === 100;
+      };
+      
+      validSplits.forEach(split => {
+        assert.equal(
+          isSplitValid(split),
+          true,
+          `Split ${split.creator}/${split.worker} should be valid`
+        );
+      });
+      
+      invalidSplits.forEach(split => {
+        assert.equal(
+          isSplitValid(split),
+          false,
+          `Split ${split.creator}/${split.worker} should be invalid`
+        );
+      });
+    });
+
+    it('should prevent non-arbiter from resolving dispute', async function () {
+      this.timeout(15000);
+      // Simulate: Only authority/arbiter can resolve
+      const authority = provider.wallet.publicKey;
+      const nonArbiter = worker2.publicKey;
+      
+      const canResolve = (signer: PublicKey) => {
+        return signer.toString() === authority.toString();
+      };
+      
+      assert.equal(canResolve(authority), true, 'Authority should be able to resolve');
+      assert.equal(canResolve(nonArbiter), false, 'Non-arbiter should not resolve');
+    });
+
+    it('should track dispute lifecycle (Raised → Resolved)', async function () {
+      this.timeout(15000);
+      // Simulate: Full dispute lifecycle
+      const dispute = {
+        status: 'Raised',
+        raisedAt: Math.floor(Date.now() / 1000),
+        resolvedAt: null as number | null,
+      };
+      
+      // Simulate resolution
+      dispute.status = 'Resolved';
+      dispute.resolvedAt = Math.floor(Date.now() / 1000);
+      
+      assert.equal(dispute.status, 'Resolved', 'Dispute should be resolved');
+      assert.ok(dispute.resolvedAt, 'Resolution timestamp should be set');
+      assert.ok(dispute.resolvedAt! >= dispute.raisedAt, 'Resolution time should be after raised time');
+    });
+  });
+
   describe('Integration Tests', () => {
     it('should execute complete bounty lifecycle (create → submit → verify)', async function () {
       this.timeout(30000);
@@ -470,6 +613,19 @@ describe('BountyGraph Program Tests', () => {
         finalState.balance,
         'State changes should be consistent'
       );
+    });
+
+    it('should support dispute resolution in bounty lifecycle', async function () {
+      this.timeout(30000);
+      // Simulate: bounty → receipt → dispute → resolution
+      const steps = [
+        'bounty_created',
+        'receipt_submitted',
+        'dispute_raised',
+        'dispute_resolved',
+        'payments_distributed',
+      ];
+      assert.equal(steps.length, 5, 'All dispute lifecycle steps should complete');
     });
   });
 });

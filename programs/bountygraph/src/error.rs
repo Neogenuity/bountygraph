@@ -26,4 +26,16 @@ pub enum BountyGraphError {
     NotTaskCompleter,
     #[msg("Escrow has no lamports")]
     EscrowEmpty,
+    #[msg("Dispute already exists")]
+    DisputeAlreadyExists,
+    #[msg("Dispute not found")]
+    DisputeNotFound,
+    #[msg("Only creator or worker can raise dispute")]
+    UnauthorizedDispute,
+    #[msg("Only arbiter can resolve dispute")]
+    UnauthorizedResolution,
+    #[msg("Task status does not allow disputes")]
+    InvalidTaskStatus,
+    #[msg("Invalid split percentage")]
+    InvalidSplit,
 }

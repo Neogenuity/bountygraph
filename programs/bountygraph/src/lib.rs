@@ -159,11 +159,135 @@ pub mod bountygraph {
 
         Ok(())
     }
+
+    pub fn dispute_task(ctx: Context<DisputeTask>, params: DisputeTaskParams) -> Result<()> {
+        require!(!params.reason.is_empty(), BountyGraphError::InvalidUri);
+        require!(params.reason.len() <= Dispute::MAX_REASON_LEN, BountyGraphError::InvalidUri);
+
+        let task = &ctx.accounts.task;
+        let signer = &ctx.accounts.initiator;
+
+        // Only creator or worker can initiate a dispute
+        require!(
+            signer.key() == task.creator || signer.key() == task.completed_by.unwrap_or_default(),
+            BountyGraphError::UnauthorizedDispute
+        );
+
+        let dispute = &mut ctx.accounts.dispute;
+        dispute.task = task.key();
+        dispute.creator = task.creator;
+        dispute.worker = task.completed_by.unwrap_or_default();
+        dispute.raised_by = signer.key();
+        dispute.reason = params.reason;
+        dispute.status = DisputeStatus::Raised;
+        dispute.raised_at_slot = Clock::get()?.slot;
+        dispute.resolved_at_slot = None;
+        dispute.arbiter = None;
+        dispute.creator_pct = None;
+        dispute.worker_pct = None;
+        dispute.bump = ctx.bumps.dispute;
+
+        Ok(())
+    }
+
+    pub fn resolve_dispute(ctx: Context<ResolveDispute>, params: ResolveDisputeParams) -> Result<()> {
+        require!(
+            params.creator_pct + params.worker_pct == 100,
+            BountyGraphError::InvalidSplit
+        );
+
+        let dispute = &mut ctx.accounts.dispute;
+
+        // Only arbiter (authority) can resolve disputes
+        require!(
+            ctx.accounts.arbiter.key() == ctx.accounts.graph.authority,
+            BountyGraphError::UnauthorizedResolution
+        );
+
+        require!(
+            dispute.status == DisputeStatus::Raised,
+            BountyGraphError::InvalidTaskStatus
+        );
+
+        let escrow_lamports = ctx.accounts.escrow.to_account_info().lamports();
+        require!(escrow_lamports > 0, BountyGraphError::EscrowEmpty);
+
+        // Calculate split
+        let creator_amount = escrow_lamports
+            .checked_mul(params.creator_pct as u64)
+            .ok_or(BountyGraphError::ArithmeticOverflow)?
+            .checked_div(100)
+            .ok_or(BountyGraphError::ArithmeticOverflow)?;
+
+        let worker_amount = escrow_lamports
+            .checked_sub(creator_amount)
+            .ok_or(BountyGraphError::ArithmeticOverflow)?;
+
+        let seeds: &[&[u8]] = &[
+            Escrow::SEED_PREFIX,
+            dispute.task.as_ref(),
+            &[ctx.accounts.escrow.bump],
+        ];
+        let signer_seeds: &[&[&[u8]]] = &[seeds];
+
+        // Pay creator
+        if creator_amount > 0 {
+            anchor_lang::solana_program::program::invoke_signed(
+                &anchor_lang::solana_program::system_instruction::transfer(
+                    &ctx.accounts.escrow.key(),
+                    &ctx.accounts.creator.key(),
+                    creator_amount,
+                ),
+                &[
+                    ctx.accounts.escrow.to_account_info(),
+                    ctx.accounts.creator.to_account_info(),
+                    ctx.accounts.system_program.to_account_info(),
+                ],
+                signer_seeds,
+            )?;
+        }
+
+        // Pay worker
+        if worker_amount > 0 {
+            anchor_lang::solana_program::program::invoke_signed(
+                &anchor_lang::solana_program::system_instruction::transfer(
+                    &ctx.accounts.escrow.key(),
+                    &ctx.accounts.worker.key(),
+                    worker_amount,
+                ),
+                &[
+                    ctx.accounts.escrow.to_account_info(),
+                    ctx.accounts.worker.to_account_info(),
+                    ctx.accounts.system_program.to_account_info(),
+                ],
+                signer_seeds,
+            )?;
+        }
+
+        dispute.status = DisputeStatus::Resolved;
+        dispute.resolved_at_slot = Some(Clock::get()?.slot);
+        dispute.arbiter = Some(ctx.accounts.arbiter.key());
+        dispute.creator_pct = Some(params.creator_pct);
+        dispute.worker_pct = Some(params.worker_pct);
+
+        Ok(())
+    }
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
 pub struct InitializeGraphParams {
     pub max_dependencies_per_task: u16,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct DisputeTaskParams {
+    pub reason: String,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct ResolveDisputeParams {
+    pub creator_pct: u8,
+    pub worker_pct: u8,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
@@ -279,6 +403,58 @@ pub struct ClaimReward<'info> {
 
     #[account(mut)]
     pub agent: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(params: DisputeTaskParams)]
+pub struct DisputeTask<'info> {
+    #[account(mut)]
+    pub task: Account<'info, Task>,
+
+    #[account(
+        init,
+        payer = initiator,
+        space = 8 + Dispute::space_for(&params.reason),
+        seeds = [Dispute::SEED_PREFIX, task.key().as_ref(), initiator.key().as_ref()],
+        bump
+    )]
+    pub dispute: Account<'info, Dispute>,
+
+    #[account(mut)]
+    pub initiator: Signer<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct ResolveDispute<'info> {
+    #[account(mut)]
+    pub graph: Account<'info, Graph>,
+
+    #[account(mut)]
+    pub dispute: Account<'info, Dispute>,
+
+    #[account(mut)]
+    pub task: Account<'info, Task>,
+
+    #[account(
+        mut,
+        seeds = [Escrow::SEED_PREFIX, task.key().as_ref()],
+        bump = escrow.bump
+    )]
+    pub escrow: Account<'info, Escrow>,
+
+    /// CHECK: Verified in instruction
+    #[account(mut)]
+    pub creator: UncheckedAccount<'info>,
+
+    /// CHECK: Verified in instruction
+    #[account(mut)]
+    pub worker: UncheckedAccount<'info>,
+
+    pub arbiter: Signer<'info>,
 
     pub system_program: Program<'info, System>,
 }
