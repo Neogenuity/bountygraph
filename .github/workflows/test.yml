@@ -29,11 +29,22 @@ jobs:
           SOLANA_VERSION="${SOLANA_VERSION:-1.18.0}"
           SOLANA_DIR="$HOME/.local/share/solana-github/v${SOLANA_VERSION}"
           if [[ ! -x "$SOLANA_DIR/bin/solana" ]]; then
+            rm -rf "$SOLANA_DIR"
             mkdir -p "$SOLANA_DIR"
             URL="https://github.com/solana-labs/solana/releases/download/v${SOLANA_VERSION}/solana-release-x86_64-unknown-linux-gnu.tar.bz2"
             curl -fL --retry 5 --retry-all-errors --connect-timeout 20 --max-time 300 "$URL" -o /tmp/solana.tar.bz2
-            tar -xjf /tmp/solana.tar.bz2 -C "$SOLANA_DIR" --strip-components=1
+            TMPDIR="$(mktemp -d)"
+            tar -xjf /tmp/solana.tar.bz2 -C "$TMPDIR"
+            BIN_DIR="$(find "$TMPDIR" -maxdepth 4 -type f -name solana -perm -111 -print -quit | xargs -r dirname)"
+            if [[ -z "$BIN_DIR" ]]; then
+              echo "Failed to locate solana binary after extraction" >&2
+              find "$TMPDIR" -maxdepth 4 -type f | head -n 50 >&2
+              exit 1
+            fi
+            cp -R "$BIN_DIR/.."/* "$SOLANA_DIR"/
+            rm -rf "$TMPDIR"
           fi
+          export PATH="$SOLANA_DIR/bin:$PATH"
           echo "$SOLANA_DIR/bin" >> $GITHUB_PATH
           solana --version
         continue-on-error: true
