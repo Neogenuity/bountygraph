@@ -233,8 +233,8 @@ pub mod bountygraph {
         let receipt = &mut ctx.accounts.receipt;
         receipt.task = task.key();
         receipt.agent = ctx.accounts.agent.key();
-        receipt.work_hash = params.work_hash;  // Hash of work artifact (e.g., commit hash, file hash)
-        receipt.uri = params.uri;  // URI to work details (IPFS, GitHub, etc.)
+        receipt.work_hash = params.work_hash; // Hash of work artifact (e.g., commit hash, file hash)
+        receipt.uri = params.uri; // URI to work details (IPFS, GitHub, etc.)
         receipt.submitted_at_slot = Clock::get()?.slot;
         receipt.bump = ctx.bumps.receipt;
 
