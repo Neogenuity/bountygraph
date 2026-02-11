@@ -26,10 +26,22 @@ pub enum BountyGraphError {
     NotTaskCompleter,
     #[msg("Escrow has no lamports")]
     EscrowEmpty,
-    #[msg("Dispute already exists")]
-    DisputeAlreadyExists,
-    #[msg("Dispute not found")]
-    DisputeNotFound,
+    #[msg("Task is in dispute")]
+    TaskInDispute,
+    #[msg("Signer is not authorized to dispute")]
+    UnauthorizedDisputer,
+    #[msg("Dispute already raised")]
+    DisputeAlreadyRaised,
+    #[msg("No dispute raised")]
+    NoDisputeRaised,
+    #[msg("Invalid dispute resolution")]
+    InvalidResolution,
+    #[msg("Invalid graph account")]
+    InvalidGraph,
+    #[msg("Invalid creator account")]
+    InvalidCreator,
+    #[msg("Invalid worker account")]
+    InvalidWorker,
     #[msg("Only creator or worker can raise dispute")]
     UnauthorizedDispute,
     #[msg("Only arbiter can resolve dispute")]

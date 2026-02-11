@@ -48,9 +48,15 @@ pub mod bountygraph {
         task.creator = ctx.accounts.creator.key();
         task.reward_lamports = params.reward_lamports;
         task.status = TaskStatus::Open;
+        task.dispute_status = DisputeStatus::None;
         task.dependencies = params.dependencies;
         task.created_at_slot = Clock::get()?.slot;
         task.completed_by = None;
+        task.disputed_by = None;
+        task.dispute_raised_at_slot = 0;
+        task.resolved_by = None;
+        task.dispute_resolved_at_slot = 0;
+        task.worker_award_lamports = 0;
         task.bump = ctx.bumps.task;
 
         graph.task_count = graph
@@ -129,6 +135,10 @@ pub mod bountygraph {
             BountyGraphError::TaskNotCompleted
         );
         require!(
+            ctx.accounts.task.dispute_status == DisputeStatus::None,
+            BountyGraphError::TaskInDispute
+        );
+        require!(
             ctx.accounts.task.completed_by == Some(ctx.accounts.agent.key()),
             BountyGraphError::NotTaskCompleter
         );
@@ -136,26 +146,97 @@ pub mod bountygraph {
         let escrow_lamports = ctx.accounts.escrow.to_account_info().lamports();
         require!(escrow_lamports > 0, BountyGraphError::EscrowEmpty);
 
+        // Transfer lamports from escrow PDA to agent using direct lamport manipulation
+        // (system_instruction::transfer cannot work with program-owned PDAs)
+        **ctx.accounts.escrow.to_account_info().lamports.borrow_mut() -= escrow_lamports;
+        **ctx.accounts.agent.to_account_info().lamports.borrow_mut() += escrow_lamports;
+
+        // Close the escrow account by zeroing its data
+        ctx.accounts.escrow.task = Pubkey::default();
+        ctx.accounts.escrow.bump = 0;
+
+        Ok(())
+    }
+
+    pub fn dispute_bounty(ctx: Context<DisputeBounty>) -> Result<()> {
+        let task = &mut ctx.accounts.task;
+
+        require!(task.status == TaskStatus::Completed, BountyGraphError::TaskNotCompleted);
+        require!(task.dispute_status == DisputeStatus::None, BountyGraphError::DisputeAlreadyRaised);
+
+        let signer = ctx.accounts.disputer.key();
+        let is_creator = signer == task.creator;
+        let is_worker = task.completed_by == Some(signer);
+        require!(is_creator || is_worker, BountyGraphError::UnauthorizedDisputer);
+
+        task.dispute_status = DisputeStatus::Raised;
+        task.disputed_by = Some(signer);
+        task.dispute_raised_at_slot = Clock::get()?.slot;
+
+        Ok(())
+    }
+
+    pub fn resolve_dispute(ctx: Context<ResolveDispute>, worker_award_lamports: u64) -> Result<()> {
+        let task = &mut ctx.accounts.task;
+
+        require!(task.status == TaskStatus::Completed, BountyGraphError::TaskNotCompleted);
+        require!(task.dispute_status == DisputeStatus::Raised, BountyGraphError::NoDisputeRaised);
+
+        let worker_pk = task.completed_by.ok_or(BountyGraphError::TaskNotCompleted)?;
+        require!(ctx.accounts.worker.key() == worker_pk, BountyGraphError::InvalidWorker);
+        require!(ctx.accounts.creator.key() == task.creator, BountyGraphError::InvalidCreator);
+
+        let escrow_lamports = ctx.accounts.escrow.to_account_info().lamports();
+        require!(escrow_lamports > 0, BountyGraphError::EscrowEmpty);
+        require!(worker_award_lamports <= escrow_lamports, BountyGraphError::InvalidResolution);
+
         let seeds: &[&[u8]] = &[
             Escrow::SEED_PREFIX,
-            ctx.accounts.task.key().as_ref(),
+            task.key().as_ref(),
             &[ctx.accounts.escrow.bump],
         ];
         let signer_seeds: &[&[&[u8]]] = &[seeds];
 
-        anchor_lang::solana_program::program::invoke_signed(
-            &anchor_lang::solana_program::system_instruction::transfer(
-                &ctx.accounts.escrow.key(),
-                &ctx.accounts.agent.key(),
-                escrow_lamports,
-            ),
-            &[
-                ctx.accounts.escrow.to_account_info(),
-                ctx.accounts.agent.to_account_info(),
-                ctx.accounts.system_program.to_account_info(),
-            ],
-            signer_seeds,
-        )?;
+        if worker_award_lamports > 0 {
+            anchor_lang::solana_program::program::invoke_signed(
+                &anchor_lang::solana_program::system_instruction::transfer(
+                    &ctx.accounts.escrow.key(),
+                    &ctx.accounts.worker.key(),
+                    worker_award_lamports,
+                ),
+                &[
+                    ctx.accounts.escrow.to_account_info(),
+                    ctx.accounts.worker.to_account_info(),
+                    ctx.accounts.system_program.to_account_info(),
+                ],
+                signer_seeds,
+            )?;
+        }
+
+        let remainder = escrow_lamports
+            .checked_sub(worker_award_lamports)
+            .ok_or(BountyGraphError::ArithmeticOverflow)?;
+
+        if remainder > 0 {
+            anchor_lang::solana_program::program::invoke_signed(
+                &anchor_lang::solana_program::system_instruction::transfer(
+                    &ctx.accounts.escrow.key(),
+                    &ctx.accounts.creator.key(),
+                    remainder,
+                ),
+                &[
+                    ctx.accounts.escrow.to_account_info(),
+                    ctx.accounts.creator.to_account_info(),
+                    ctx.accounts.system_program.to_account_info(),
+                ],
+                signer_seeds,
+            )?;
+        }
+
+        task.dispute_status = DisputeStatus::Resolved;
+        task.resolved_by = Some(ctx.accounts.authority.key());
+        task.dispute_resolved_at_slot = Clock::get()?.slot;
+        task.worker_award_lamports = worker_award_lamports;
 
         Ok(())
     }
@@ -430,14 +511,20 @@ pub struct DisputeTask<'info> {
 
 #[derive(Accounts)]
 pub struct ResolveDispute<'info> {
-    #[account(mut)]
+    #[account(
+        has_one = authority,
+        seeds = [Graph::SEED_PREFIX, authority.key().as_ref()],
+        bump = graph.bump
+    )]
     pub graph: Account<'info, Graph>,
+
+    pub authority: Signer<'info>,
+
+    #[account(mut, constraint = task.graph == graph.key() @ BountyGraphError::InvalidGraph)]
+    pub task: Account<'info, Task>,
 
     #[account(mut)]
     pub dispute: Account<'info, Dispute>,
-
-    #[account(mut)]
-    pub task: Account<'info, Task>,
 
     #[account(
         mut,
@@ -446,15 +533,11 @@ pub struct ResolveDispute<'info> {
     )]
     pub escrow: Account<'info, Escrow>,
 
-    /// CHECK: Verified in instruction
     #[account(mut)]
-    pub creator: UncheckedAccount<'info>,
+    pub creator: SystemAccount<'info>,
 
-    /// CHECK: Verified in instruction
     #[account(mut)]
-    pub worker: UncheckedAccount<'info>,
-
-    pub arbiter: Signer<'info>,
+    pub worker: SystemAccount<'info>,
 
     pub system_program: Program<'info, System>,
 }
