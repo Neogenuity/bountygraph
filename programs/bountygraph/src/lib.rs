@@ -146,26 +146,14 @@ pub mod bountygraph {
         let escrow_lamports = ctx.accounts.escrow.to_account_info().lamports();
         require!(escrow_lamports > 0, BountyGraphError::EscrowEmpty);
 
-        let seeds: &[&[u8]] = &[
-            Escrow::SEED_PREFIX,
-            ctx.accounts.task.key().as_ref(),
-            &[ctx.accounts.escrow.bump],
-        ];
-        let signer_seeds: &[&[&[u8]]] = &[seeds];
+        // Transfer lamports from escrow PDA to agent using direct lamport manipulation
+        // (system_instruction::transfer cannot work with program-owned PDAs)
+        **ctx.accounts.escrow.to_account_info().lamports.borrow_mut() -= escrow_lamports;
+        **ctx.accounts.agent.to_account_info().lamports.borrow_mut() += escrow_lamports;
 
-        anchor_lang::solana_program::program::invoke_signed(
-            &anchor_lang::solana_program::system_instruction::transfer(
-                &ctx.accounts.escrow.key(),
-                &ctx.accounts.agent.key(),
-                escrow_lamports,
-            ),
-            &[
-                ctx.accounts.escrow.to_account_info(),
-                ctx.accounts.agent.to_account_info(),
-                ctx.accounts.system_program.to_account_info(),
-            ],
-            signer_seeds,
-        )?;
+        // Close the escrow account by zeroing its data
+        ctx.accounts.escrow.task = Pubkey::default();
+        ctx.accounts.escrow.bump = 0;
 
         Ok(())
     }
