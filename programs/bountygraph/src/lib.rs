@@ -196,9 +196,9 @@ pub mod bountygraph {
 
         let dispute = &mut ctx.accounts.dispute;
 
-        // Only arbiter (authority) can resolve disputes
+        // Only authority can resolve disputes
         require!(
-            ctx.accounts.arbiter.key() == ctx.accounts.graph.authority,
+            ctx.accounts.authority.key() == ctx.accounts.graph.authority,
             BountyGraphError::UnauthorizedResolution
         );
 
@@ -264,7 +264,7 @@ pub mod bountygraph {
 
         dispute.status = DisputeStatus::Resolved;
         dispute.resolved_at_slot = Some(Clock::get()?.slot);
-        dispute.arbiter = Some(ctx.accounts.arbiter.key());
+        dispute.arbiter = Some(ctx.accounts.authority.key());
         dispute.creator_pct = Some(params.creator_pct);
         dispute.worker_pct = Some(params.worker_pct);
 

@@ -1,5 +1,11 @@
 import express from 'express';
 import cors from 'cors';
+import {
+  validateBountyRequest,
+  validateReceiptRequest,
+  validateVerificationRequest,
+  isValidSolanaKey,
+} from './utils';
 
 export type BountyStatus = 'open' | 'completed' | 'disputed' | 'resolved';
 export type DisputeStatus = 'none' | 'raised' | 'resolved';
@@ -65,6 +71,12 @@ export function createApp(state: AppState = createDefaultState()) {
         milestoneCount,
         creatorWallet,
       } = req.body ?? {};
+
+      // Use shared validator
+      const validationError = validateBountyRequest(req.body);
+      if (validationError) {
+        return res.status(400).json({ error: validationError });
+      }
 
       if (!bountyId || !title || !totalAmount || !milestoneCount || !creatorWallet) {
         return res.status(400).json({ error: 'Missing required fields' });
@@ -135,8 +147,19 @@ export function createApp(state: AppState = createDefaultState()) {
         workerWallet,
       } = req.body ?? {};
 
+      // Use shared validator
+      const validationError = validateReceiptRequest(req.body);
+      if (validationError) {
+        return res.status(400).json({ error: validationError });
+      }
+
       if (!receiptId || !bountyId || milestoneIndex === undefined || !workerWallet) {
         return res.status(400).json({ error: 'Missing required fields' });
+      }
+
+      // Enforce artifact hash requirement (no empty hashes allowed)
+      if (!artifactHash || typeof artifactHash !== 'string' || artifactHash.trim() === '') {
+        return res.status(400).json({ error: 'artifactHash is required and cannot be empty' });
       }
 
       const bounty = state.bounties.get(bountyId);
@@ -171,7 +194,7 @@ export function createApp(state: AppState = createDefaultState()) {
         bountyId,
         worker: workerWallet,
         milestoneIndex,
-        artifactHash: artifactHash ?? '',
+        artifactHash: artifactHash,
         metadataUri,
         status: 'pending',
         submittedAt: now,
@@ -220,12 +243,19 @@ export function createApp(state: AppState = createDefaultState()) {
       const { receiptId } = req.params;
       const { approved, verifierNote, verifier } = req.body ?? {};
 
-      if (typeof approved !== 'boolean') {
-        return res.status(400).json({ error: 'Invalid approval status' });
+      // Use shared validator
+      const validationError = validateVerificationRequest(req.body);
+      if (validationError) {
+        return res.status(400).json({ error: validationError });
       }
 
       if (!verifier || typeof verifier !== 'string') {
         return res.status(400).json({ error: 'Verifier wallet is required' });
+      }
+
+      // Validate Solana key format
+      if (!isValidSolanaKey(verifier)) {
+        return res.status(400).json({ error: 'verifier must be a valid Solana public key' });
       }
 
       const receipt = state.receipts.get(receiptId);
@@ -318,10 +348,14 @@ export function createApp(state: AppState = createDefaultState()) {
   app.post('/bounties/:bountyId/disputes/resolve', async (req, res) => {
     try {
       const { bountyId } = req.params;
-      const { resolvedBy, workerAwardAmount } = req.body ?? {};
+      const { resolvedBy, workerAwardAmount, requesterWallet } = req.body ?? {};
 
       if (!resolvedBy || typeof resolvedBy !== 'string') {
         return res.status(400).json({ error: 'resolvedBy is required' });
+      }
+
+      if (!requesterWallet || typeof requesterWallet !== 'string') {
+        return res.status(400).json({ error: 'requesterWallet is required for authorization' });
       }
 
       if (typeof workerAwardAmount !== 'number' || workerAwardAmount < 0) {
@@ -330,6 +364,11 @@ export function createApp(state: AppState = createDefaultState()) {
 
       const bounty = state.bounties.get(bountyId);
       if (!bounty) return res.status(404).json({ error: 'Bounty not found' });
+
+      // Authorization: only bounty creator can resolve disputes
+      if (bounty.creator !== requesterWallet) {
+        return res.status(403).json({ error: 'Only bounty creator can resolve disputes' });
+      }
 
       if (bounty.disputeStatus !== 'raised') {
         return res.status(409).json({ error: 'No dispute raised' });
