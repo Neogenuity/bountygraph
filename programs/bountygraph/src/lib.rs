@@ -6,7 +6,7 @@ pub mod state;
 use crate::error::BountyGraphError;
 use crate::state::*;
 
-declare_id!("9xQeWvG816bUx9EPfVb1zZQzQpimeJVFRCGDpa2BkLom");
+declare_id!("Ghm5zPnHy5yJwQ6P22NYgNVrqPokDqAV3otdut3DSbSS");
 
 #[program]
 pub mod bountygraph {
@@ -190,27 +190,20 @@ pub mod bountygraph {
         require!(escrow_lamports > 0, BountyGraphError::EscrowEmpty);
         require!(worker_award_lamports <= escrow_lamports, BountyGraphError::InvalidResolution);
 
-        let seeds: &[&[u8]] = &[
-            Escrow::SEED_PREFIX,
-            task.key().as_ref(),
-            &[ctx.accounts.escrow.bump],
-        ];
-        let signer_seeds: &[&[&[u8]]] = &[seeds];
-
+        // SystemProgram::transfer cannot debit program-owned PDAs. Use direct lamport manipulation.
         if worker_award_lamports > 0 {
-            anchor_lang::solana_program::program::invoke_signed(
-                &anchor_lang::solana_program::system_instruction::transfer(
-                    &ctx.accounts.escrow.key(),
-                    &ctx.accounts.worker.key(),
-                    worker_award_lamports,
-                ),
-                &[
-                    ctx.accounts.escrow.to_account_info(),
-                    ctx.accounts.worker.to_account_info(),
-                    ctx.accounts.system_program.to_account_info(),
-                ],
-                signer_seeds,
-            )?;
+            **ctx
+                .accounts
+                .escrow
+                .to_account_info()
+                .lamports
+                .borrow_mut() -= worker_award_lamports;
+            **ctx
+                .accounts
+                .worker
+                .to_account_info()
+                .lamports
+                .borrow_mut() += worker_award_lamports;
         }
 
         let remainder = escrow_lamports
@@ -218,20 +211,13 @@ pub mod bountygraph {
             .ok_or(BountyGraphError::ArithmeticOverflow)?;
 
         if remainder > 0 {
-            anchor_lang::solana_program::program::invoke_signed(
-                &anchor_lang::solana_program::system_instruction::transfer(
-                    &ctx.accounts.escrow.key(),
-                    &ctx.accounts.creator.key(),
-                    remainder,
-                ),
-                &[
-                    ctx.accounts.escrow.to_account_info(),
-                    ctx.accounts.creator.to_account_info(),
-                    ctx.accounts.system_program.to_account_info(),
-                ],
-                signer_seeds,
-            )?;
+            **ctx.accounts.escrow.to_account_info().lamports.borrow_mut() -= remainder;
+            **ctx.accounts.creator.to_account_info().lamports.borrow_mut() += remainder;
         }
+
+        // Close the escrow account by zeroing its data.
+        ctx.accounts.escrow.task = Pubkey::default();
+        ctx.accounts.escrow.bump = 0;
 
         task.dispute_status = DisputeStatus::Resolved;
         task.resolved_by = Some(ctx.accounts.authority.key());

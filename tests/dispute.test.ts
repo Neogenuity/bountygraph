@@ -46,6 +46,28 @@ describe('bountygraph dispute resolution', () => {
     await provider.connection.confirmTransaction(sig, 'confirmed');
   };
 
+  const ensureGraph = async () => {
+    const [graphPda] = deriveGraphPda(authority.publicKey);
+    try {
+      await program.account.graph.fetch(graphPda);
+      return graphPda;
+    } catch {
+      await program.methods
+        .initializeGraph({ maxDependenciesPerTask: 10 })
+        .accounts({
+          graph: graphPda,
+          authority: authority.publicKey,
+          systemProgram: anchor.web3.SystemProgram.programId,
+        })
+        .rpc();
+      return graphPda;
+    }
+  };
+
+  before(async () => {
+    await ensureGraph();
+  });
+
   it('creator can raise a dispute; arbiter can resolve with split payout', async () => {
     const creator = Keypair.generate();
     const worker = Keypair.generate();
@@ -53,17 +75,7 @@ describe('bountygraph dispute resolution', () => {
     await airdrop(creator, 2);
     await airdrop(worker, 1);
 
-    const [graphPda] = deriveGraphPda(authority.publicKey);
-
-    await program.methods
-      .initializeGraph({ maxDependenciesPerTask: 10 })
-      .accounts({
-        graph: graphPda,
-        authority: authority.publicKey,
-        systemProgram: anchor.web3.SystemProgram.programId,
-      })
-      .signers([authority])
-      .rpc();
+    const graphPda = await ensureGraph();
 
     const taskId = new anchor.BN(1001);
     const [taskPda] = deriveTaskPda(graphPda, taskId);
@@ -153,7 +165,7 @@ describe('bountygraph dispute resolution', () => {
     await airdrop(creator, 2);
     await airdrop(worker, 1);
 
-    const [graphPda] = deriveGraphPda(authority.publicKey);
+    const graphPda = await ensureGraph();
 
     const taskId = new anchor.BN(2002);
     const [taskPda] = deriveTaskPda(graphPda, taskId);
