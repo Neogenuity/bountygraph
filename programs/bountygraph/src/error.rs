@@ -28,6 +28,8 @@ pub enum BountyGraphError {
     NotTaskCompleter,
     #[msg("Escrow has no lamports")]
     EscrowEmpty,
+    #[msg("Escrow already funded")]
+    EscrowAlreadyFunded,
     #[msg("Task is in dispute")]
     TaskInDispute,
     #[msg("Signer is not authorized to dispute")]

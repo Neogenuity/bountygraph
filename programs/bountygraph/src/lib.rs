@@ -112,11 +112,21 @@ pub mod bountygraph {
             ctx.accounts.task.status == TaskStatus::Open,
             BountyGraphError::TaskNotOpen
         );
+        require!(
+            lamports <= ctx.accounts.task.reward_lamports,
+            BountyGraphError::InvalidReward
+        );
 
         let existing_task = ctx.accounts.escrow.task;
         if existing_task != Pubkey::default() {
-            require!(existing_task == ctx.accounts.task.key(), BountyGraphError::InvalidDependency);
+            require!(
+                existing_task == ctx.accounts.task.key(),
+                BountyGraphError::InvalidDependency
+            );
         }
+
+        let escrow_balance = ctx.accounts.escrow.to_account_info().lamports();
+        require!(escrow_balance == 0, BountyGraphError::EscrowAlreadyFunded);
 
         let funder = ctx.accounts.funder.key();
         let escrow_key = ctx.accounts.escrow.key();
