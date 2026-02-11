@@ -237,54 +237,277 @@ BountyGraph solves real problems across multiple domains:
 - **Agent Task Markets** — AI agents earning on-chain with cryptographic proof
 - **Protocol Integration** — Compose bounties as trustless primitives
 
-## Integration Guide
+## SDK Integration Guide
 
-### Quick Integration
-Add BountyGraph to your Solana project:
+### Installation
+
+Add BountyGraph SDK to your Solana TypeScript project:
+
+```bash
+# Using npm
+npm install @bountygraph/sdk @solana/web3.js @coral-xyz/anchor
+
+# Using yarn
+yarn add @bountygraph/sdk @solana/web3.js @coral-xyz/anchor
+```
+
+### Quick Start: Multi-Task Workflow with Dependencies
 
 ```typescript
-import { BountyGraphSDK } from '@bountygraph/sdk';
-import { Connection, PublicKey } from '@solana/web3.js';
+import { BountyGraphClient, createBountyGraphProgram } from '@bountygraph/sdk';
+import { Connection, PublicKey, Keypair } from '@solana/web3.js';
+import { AnchorProvider, Wallet } from '@coral-xyz/anchor';
 
+// Setup: Initialize connection and client
 const connection = new Connection('https://api.devnet.solana.com');
-const sdk = new BountyGraphSDK(connection, wallet);
+const wallet = new Wallet(Keypair.generate());
+const provider = new AnchorProvider(connection, wallet, {});
+const client = BountyGraphClient.fromProvider(provider);
 
-// Create a bounty
-const bounty = await sdk.createBounty({
-  title: 'Build Feature X',
-  reward: 1000000, // 0.001 SOL
-  verificationTier: 'deterministic',
-  maxDependencies: 5,
+// Step 1: Initialize graph (once per DAO/project)
+const authority = wallet.publicKey;
+const graphTx = await client.initializeGraph(authority, {
+  maxDependenciesPerTask: 10,
+});
+console.log('✓ Graph initialized:', graphTx);
+
+// Step 2: Create multi-task workflow with dependencies
+// Task A: Write API spec
+const taskA = await client.createTask(
+  authority,
+  wallet.publicKey,
+  {
+    taskId: 1n,
+    rewardLamports: 5_000_000n, // 0.005 SOL
+    dependencies: [], // No dependencies
+  }
+);
+console.log('✓ Created Task A (spec):', taskA.task.toString());
+
+// Task B: Implement API (depends on Task A)
+const taskB = await client.createTask(
+  authority,
+  wallet.publicKey,
+  {
+    taskId: 2n,
+    rewardLamports: 10_000_000n, // 0.01 SOL
+    dependencies: [1n], // Requires Task A
+  },
+  [taskA.task] // Pass Task A account for circular dependency check
+);
+console.log('✓ Created Task B (implementation):', taskB.task.toString());
+
+// Task C: Test coverage (depends on Task B)
+const taskC = await client.createTask(
+  authority,
+  wallet.publicKey,
+  {
+    taskId: 3n,
+    rewardLamports: 7_500_000n, // 0.0075 SOL
+    dependencies: [2n], // Requires Task B
+  },
+  [taskB.task] // Circular dependency prevention
+);
+console.log('✓ Created Task C (testing):', taskC.task.toString());
+
+// Step 3: Fund tasks (escrow lockup)
+const escrowA = await client.fundTask(taskA.task, wallet.publicKey, 5_000_000n);
+const escrowB = await client.fundTask(taskB.task, wallet.publicKey, 10_000_000n);
+const escrowC = await client.fundTask(taskC.task, wallet.publicKey, 7_500_000n);
+console.log('✓ Escrow accounts funded');
+
+// Step 4: Submit proofs (workers complete tasks in order)
+// Worker submits completion for Task A
+const workHashA = new Uint8Array(32); // Replace with actual work hash
+workHashA[0] = 0xaa; // Placeholder
+const receiptA = await client.submitReceipt(
+  taskA.task,
+  wallet.publicKey, // Worker address
+  {
+    workHash: workHashA,
+    uri: 'ipfs://QmXXX...', // Link to work artifacts
+  },
+  [] // No dependencies to verify
+);
+console.log('✓ Task A completed:', receiptA.receipt.toString());
+
+// Worker submits completion for Task B (only works because A is complete)
+const workHashB = new Uint8Array(32);
+workHashB[0] = 0xbb;
+const receiptB = await client.submitReceipt(
+  taskB.task,
+  wallet.publicKey,
+  {
+    workHash: workHashB,
+    uri: 'ipfs://QmYYY...',
+  },
+  [taskA.task] // Verify Task A is complete
+);
+console.log('✓ Task B completed:', receiptB.receipt.toString());
+
+// Worker submits completion for Task C (only works because B is complete)
+const workHashC = new Uint8Array(32);
+workHashC[0] = 0xcc;
+const receiptC = await client.submitReceipt(
+  taskC.task,
+  wallet.publicKey,
+  {
+    workHash: workHashC,
+    uri: 'ipfs://QmZZZ...',
+  },
+  [taskB.task] // Topological verification
+);
+console.log('✓ Task C completed:', receiptC.receipt.toString());
+
+// Step 5: Claim rewards (atomic payout from escrow)
+const payoutA = await client.claimReward(taskA.task, wallet.publicKey);
+const payoutB = await client.claimReward(taskB.task, wallet.publicKey);
+const payoutC = await client.claimReward(taskC.task, wallet.publicKey);
+console.log('✓ All rewards claimed:', { payoutA, payoutB, payoutC });
+```
+
+### Error Handling & Common Patterns
+
+```typescript
+// Pattern 1: Catch circular dependency errors
+try {
+  // This will fail: A depends on B, and we try to make B depend on A
+  await client.createTask(authority, creator, {
+    taskId: 2n,
+    rewardLamports: 5_000_000n,
+    dependencies: [1n],
+  }, [taskA]); // taskA depends on 2
+} catch (error) {
+  if (error.message.includes('CircularDependency')) {
+    console.error('❌ Cannot create circular dependency');
+  }
+}
+
+// Pattern 2: Validate dependency completion before submission
+const taskStatus = await client.getTaskStatus(taskB.task);
+if (taskStatus.status !== 'Completed') {
+  throw new Error('Cannot complete Task B: Task A not completed yet');
+}
+
+// Pattern 3: Handle escrow account already funded
+try {
+  await client.fundTask(taskA.task, funder, 5_000_000n);
+  await client.fundTask(taskA.task, funder, 5_000_000n); // Error!
+} catch (error) {
+  console.error('❌ Escrow already funded for this task');
+}
+
+// Pattern 4: Dispute resolution (if work quality disputed)
+const dispute = await client.disputeTask(taskB.task, initiator, {
+  reason: 'Code does not compile',
+});
+console.log('✓ Dispute raised:', dispute);
+
+// Arbiter resolves with split
+const resolution = await client.resolveDispute(
+  taskB.task,
+  authority,
+  {
+    creatorPct: 70,  // Creator gets 70%
+    workerPct: 30,   // Worker gets 30%
+  }
+);
+console.log('✓ Dispute resolved:', resolution);
+```
+
+### Integration Patterns
+
+#### Pattern: Simple Integration (Single Task)
+```typescript
+// For simple bounties with no dependencies
+const task = await client.createTask(authority, creator, {
+  taskId: 1n,
+  rewardLamports: 1_000_000n,
+  dependencies: [], // No dependencies
 });
 
-// Submit proof of work
-const receipt = await sdk.submitReceipt({
-  bountyId: bounty,
-  artifactHash: 'sha256:abc123...',
-  metadataUri: 'https://ipfs.io/ipfs/...',
+await client.fundTask(task.task, funder, 1_000_000n);
+
+// Worker submits
+const receipt = await client.submitReceipt(
+  task.task,
+  worker,
+  { workHash, uri },
+  []
+);
+
+// Payout
+await client.claimReward(task.task, worker);
+```
+
+#### Pattern: DAO Milestone Tracking
+```typescript
+// Complex proposals with dependent milestones
+// Use graph authority for arbiter role
+const graphTx = await client.initializeGraph(daoTreasuryMultisig, {
+  maxDependenciesPerTask: 50,
 });
 
-// Verify and release escrow
-const payout = await sdk.verifyReceipt(receipt);
-console.log(`✓ Payout complete: ${payout} lamports`);
+// M1: Proposal approved → M2: Implementation → M3: Audit → M4: Deploy
+// Task dependencies ensure sequence enforcement
+```
+
+#### Pattern: AI Agent Task Markets
+```typescript
+// Agents bid on and execute tasks
+// On-chain completion proof enables autonomous reward claiming
+// Reputation follows agent across protocols (portable on-chain)
 ```
 
 ### Integration Points
 
-**For DAOs:**
-- Use as escrow layer for complex governance
-- Compose with governance tokens
-- Create trustless fund management
+**For DAOs & DAG-Based Workflows:**
+```typescript
+// BountyGraph integrates as escrow layer for complex governance
+// Example: Multi-step governance with milestone verification
+const govGraph = await client.initializeGraph(daoTreasury, {
+  maxDependenciesPerTask: 100,
+});
 
-**For Protocols:**
-- Call via CPI (cross-program invocation)
-- Use PDA helpers for address derivation
-- Integrate with custom verification logic
+// Create milestone chain: Proposal → Voting → Implementation → Audit → Deploy
+// Each stage unlocks only when previous completes (enforced on-chain)
+```
 
-**For Platforms:**
-- Use REST API for off-chain task management
-- Integrate Phantom wallet for signing
-- Query reputation data on-chain
+**For Protocols (Composability via CPI):**
+```typescript
+// Call BountyGraph from other Solana programs
+// Use program's instruction builder for cross-program invocation
+const ix = await client.program.methods
+  .submitReceipt({ workHash, uri })
+  .accounts({ task, receipt, agent })
+  .instruction();
+
+// Embed in your own transaction
+const tx = new Transaction().add(ix);
+```
+
+**For Platforms & Marketplaces:**
+```typescript
+// Use REST API (coming Q2) for off-chain task management
+// REST API provides:
+// - Task listing (with dependency graphs)
+// - Worker reputation queries
+// - Dispute history
+// - Gas-free state sync via Helius webhooks
+
+// Current: Direct SDK usage for on-chain operations
+// Future: REST layer for lightweight indexing
+```
+
+**PDA Address Derivation (Type-Safe):**
+```typescript
+const [graphPda] = client.pdas.graph(authority);
+const [taskPda] = client.pdas.task(graphPda, taskId);
+const [escrowPda] = client.pdas.escrow(taskPda);
+const [receiptPda] = client.pdas.receipt(taskPda, agentAddress);
+
+// Deterministic derivation: replay-safe, no RNG risk
+```
 
 ## Technical Highlights
 
@@ -296,14 +519,50 @@ console.log(`✓ Payout complete: ${payout} lamports`);
 - ✅ **Security Audit** — Cycle detection, deterministic verification, rent optimization
 - ✅ **CI/CD Pipeline** — GitHub Actions with automated testing and deployment
 
-## Testing
+## Testing & Validation
 
-Run the local TypeScript unit tests (PDA derivations + core invariants):
+### Run Full Test Suite
 
 ```bash
+# Install dependencies (including dev)
 npm install --include=dev
+
+# Run all Anchor tests (program + SDK)
 npm run test:anchor
+
+# Run TypeScript tests only
+npm run test:ts
+
+# Run with coverage
+npm run test:coverage
 ```
+
+### Test Coverage Highlights
+
+**Program-Level Tests (Anchor/Rust):**
+- ✅ Circular dependency prevention (A→B→A rejection)
+- ✅ Topological ordering validation (B cannot complete before A)
+- ✅ Escrow custody and atomicity (funds locked until release)
+- ✅ PDA derivation determinism (replay-safe addresses)
+- ✅ Arithmetic overflow protection (large reward sums)
+- ✅ Authorization checks (only creator/worker can claim)
+- ✅ Dispute resolution with splits (rounding correctness)
+
+**SDK Tests (TypeScript):**
+- ✅ PDA address derivation matches program expectations
+- ✅ Account serialization/deserialization round-trip
+- ✅ Client method signatures match program instructions
+- ✅ Error message mapping and translation
+- ✅ Wallet integration (keypair signing)
+- ✅ Connection pooling and RPC fallbacks
+
+**Integration Tests (End-to-End):**
+- ✅ Full workflow: Create → Fund → Submit → Claim (no dependencies)
+- ✅ Dependency chain: A → B → C with topological validation
+- ✅ Circular dependency rejection (architecture invariant)
+- ✅ Concurrent tasks with shared dependencies
+- ✅ Dispute initiation and resolution
+- ✅ Escrow double-fund prevention
 
 ## Architecture Overview
 
