@@ -10,6 +10,8 @@ pub enum BountyGraphError {
     TooManyDependencies,
     #[msg("Invalid dependency list")]
     InvalidDependency,
+    #[msg("Circular dependency detected")]
+    CircularDependency,
     #[msg("Arithmetic overflow")]
     ArithmeticOverflow,
     #[msg("Task is not open")]

@@ -30,17 +30,24 @@ pub mod bountygraph {
         Ok(())
     }
 
-    pub fn create_task(ctx: Context<CreateTask>, params: CreateTaskParams) -> Result<()> {
-        let graph = &mut ctx.accounts.graph;
+    pub fn create_task<'a>(
+        ctx: Context<'_, '_, 'a, 'a, CreateTask<'a>>,
+        params: CreateTaskParams,
+    ) -> Result<()> {
+        const MIN_REWARD_LAMPORTS: u64 = 1_000;
 
-        require!(params.reward_lamports > 0, BountyGraphError::InvalidReward);
+        let graph_key = ctx.accounts.graph.key();
+        let max_deps = ctx.accounts.graph.max_dependencies_per_task;
+        let deps = params.dependencies.clone();
+
         require!(
-            (params.dependencies.len() as u16) <= graph.max_dependencies_per_task,
-            BountyGraphError::TooManyDependencies
+            params.reward_lamports >= MIN_REWARD_LAMPORTS,
+            BountyGraphError::InvalidReward
         );
+        require!((deps.len() as u16) <= max_deps, BountyGraphError::TooManyDependencies);
 
         let mut prev: Option<u64> = None;
-        for dep in params.dependencies.iter() {
+        for dep in deps.iter() {
             require!(*dep != params.task_id, BountyGraphError::InvalidDependency);
             if let Some(p) = prev {
                 require!(*dep > p, BountyGraphError::InvalidDependency);
@@ -48,14 +55,39 @@ pub mod bountygraph {
             prev = Some(*dep);
         }
 
+        if !deps.is_empty() {
+            require!(
+                ctx.remaining_accounts.len() == deps.len(),
+                BountyGraphError::MissingDependencyAccounts
+            );
+
+            for (i, dep_task_info) in ctx.remaining_accounts.iter().enumerate() {
+                let expected_dep_id = deps[i];
+                let dep_task: Account<Task> = Account::try_from(dep_task_info)?;
+
+                require!(dep_task.graph == graph_key, BountyGraphError::InvalidDependency);
+                require!(dep_task.task_id == expected_dep_id, BountyGraphError::InvalidDependency);
+
+                require!(
+                    !dep_task.dependencies.iter().any(|d| *d == params.task_id),
+                    BountyGraphError::CircularDependency
+                );
+            }
+        } else {
+            require!(
+                ctx.remaining_accounts.is_empty(),
+                BountyGraphError::MissingDependencyAccounts
+            );
+        }
+
         let task = &mut ctx.accounts.task;
-        task.graph = graph.key();
+        task.graph = graph_key;
         task.task_id = params.task_id;
         task.creator = ctx.accounts.creator.key();
         task.reward_lamports = params.reward_lamports;
         task.status = TaskStatus::Open;
         task.dispute_status = DisputeStatus::None;
-        task.dependencies = params.dependencies;
+        task.dependencies = deps;
         task.created_at_slot = Clock::get()?.slot;
         task.completed_by = None;
         task.disputed_by = None;
@@ -65,6 +97,7 @@ pub mod bountygraph {
         task.worker_award_lamports = 0;
         task.bump = ctx.bumps.task;
 
+        let graph = &mut ctx.accounts.graph;
         graph.task_count = graph
             .task_count
             .checked_add(1)
@@ -80,11 +113,15 @@ pub mod bountygraph {
             BountyGraphError::TaskNotOpen
         );
 
-        let ix = anchor_lang::solana_program::system_instruction::transfer(
-            &ctx.accounts.funder.key(),
-            &ctx.accounts.escrow.key(),
-            lamports,
-        );
+        let existing_task = ctx.accounts.escrow.task;
+        if existing_task != Pubkey::default() {
+            require!(existing_task == ctx.accounts.task.key(), BountyGraphError::InvalidDependency);
+        }
+
+        let funder = ctx.accounts.funder.key();
+        let escrow_key = ctx.accounts.escrow.key();
+
+        let ix = anchor_lang::solana_program::system_instruction::transfer(&funder, &escrow_key, lamports);
         anchor_lang::solana_program::program::invoke(
             &ix,
             &[
@@ -428,6 +465,7 @@ pub struct ClaimReward<'info> {
 
     #[account(
         mut,
+        constraint = escrow.task == task.key() @ BountyGraphError::InvalidDependency,
         seeds = [Escrow::SEED_PREFIX, task.key().as_ref()],
         bump = escrow.bump
     )]
