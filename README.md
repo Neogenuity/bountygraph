@@ -1,20 +1,54 @@
-# **BountyGraph: Security-Focused Bounty Verification on Solana**
+# **BountyGraph: First Solana Bounty System with Cryptographic Dependency Verification**
 
-**On-chain proof-of-work receipts, dependency graphs, and verification-gated escrow for trustless agent task markets**
+**Production-grade on-chain escrow, circular dependency prevention, and atomic milestone verification**
 
-## Problem & Solution
+## Innovation in 30 Seconds
 
-### The Problem
-Centralized bounty platforms require intermediaries to hold funds, arbitrate disputes, and verify work—creating friction, high fees, and trust risk. Decentralized work deserves decentralized infrastructure. Traditional systems fail for multi-step tasks: workers can't verify upstream dependencies, and creators can't ensure work is completed in the right order.
+**Problem:** Traditional bounty platforms cannot verify task dependencies. If Task B depends on Task A, there's no way to cryptographically prove Task A completed before releasing Task B's funds.
 
-### Our Solution
-**BountyGraph** is a fully on-chain bounty escrow platform that:
-- Uses **Solana PDAs** for trustless, transparent fund custody
-- Models work as **dependency graphs** to gate milestone releases
-- Implements **3-tier verification** (deterministic on-chain, oracle attestation, governance arbitration)
-- Enables **AI agents** and **DAOs** to accept complex task chains with guaranteed payouts
+**Solution:** BountyGraph is the **only Solana bounty system that prevents circular dependencies and enforces task ordering via on-chain cryptographic verification**. We model work as a directed acyclic graph (DAG) with topological validation, ensuring Task B cannot unlock until Task A is verified on-chain.
 
-## Quick Start
+**Why it matters:** This enables trustless multi-milestone work:
+- DAOs fund complex governance with verified milestones
+- AI agents earn on-chain with proof-of-completion
+- Bug bounty platforms guarantee payment for verified findings
+- No intermediary required—code enforces the rules
+
+## The Problem (Traditional Systems Fail Here)
+
+Centralized bounty platforms (Upwork, Fiverr, GitHub Sponsors) rely on:
+- **Centralized escrow** — You must trust the platform to hold your money
+- **Manual verification** — A human reviews screenshots; disputes take days
+- **No dependency tracking** — Can't express "Task B unlocks only when Task A completes"
+- **Siloed reputation** — Each platform restarts your credibility score
+
+**Result:** Complex multi-milestone projects require constant back-and-forth, manual verification delays, and high intermediary fees.
+
+## Our Solution: On-Chain Dependency Verification
+
+**BountyGraph** is a fully on-chain bounty escrow system that:
+
+1. **Cryptographic Dependency Verification** — Task B cannot start until Task A's proof-of-work is verified on-chain via topological DAG validation
+2. **Circular Dependency Prevention** — Prevents Task A→B→A cycles at the program level (unique to BountyGraph)
+3. **Trustless Escrow via PDAs** — Bounty funds held in program-owned accounts; creators cannot withdraw once verified
+4. **3-Tier Verification** — Deterministic on-chain (60%), oracle attestation (30%), governance arbitration (10%)
+5. **Portable Reputation** — Completion records live on-chain; reputation follows agents across protocols
+
+**Key differentiation:** Only BountyGraph enforces task ordering via cryptographic verification. No other project prevents circular dependencies.
+
+## Try It Now (30 Seconds)
+
+### Live Demo
+**Visit: https://neogenuity.github.io/bountygraph/**
+
+Try the circular dependency rejection:
+1. Click "Create Task A depends on B"
+2. Click "Create Task B depends on A"
+3. Watch it **reject the circular dependency in real-time**
+
+This is the unique innovation. No other bounty system prevents circular dependencies cryptographically.
+
+## Quick Start (Local Development)
 
 ### Installation
 ```bash
@@ -50,7 +84,8 @@ ts-node examples/quickstart.ts
 # - Connecting to Solana devnet
 # - Creating parent and child bounties
 # - Submitting proof-of-work
-# - Verifying dependencies
+# - Verifying dependencies via DAG
+# - Atomic escrow release
 ```
 
 ### Start Development Environment
@@ -259,25 +294,35 @@ This ensures **causality**: phase 2 cannot complete until phase 1 is verified.
 
 ## Key Features
 
-**Proof-of-Work Receipts**
-- Workers submit SHA-256(artifact) + metadata to on-chain receipt PDA
+**🔐 Cryptographic Dependency Verification (Unique to BountyGraph)**
+- Task B cryptographically blocked until Task A receipt verified on-chain
+- Topological DAG validation rejects circular dependencies at program level
+- No other Solana bounty system enforces this constraint
+
+**✅ Proof-of-Work Receipts**
+- Workers submit SHA-256(artifact) + metadata to immutable on-chain receipt PDA
 - Optional: URI field for IPFS/Arweave full artifact storage
-- Immutable receipt prevents backdating or rewriting history
+- Backdating impossible; complete audit trail on Solana
 
-**Dependency Graphs (DAG)**
-- Task B blocked until Task A receipt verified on-chain
-- Topological sort prevents circular dependencies
-- Multi-milestone bounties with ordered unlock gates
+**💰 Trustless Escrow (Program-Owned PDAs)**
+- Bounty funds held in Solana program-derived accounts
+- Only the program can authorize release—creators cannot withdraw once verified
+- Zero trust assumptions; code enforces rules
 
-**Verification-Gated Payouts**
-- Tier 1 (60%): Deterministic on-chain validation → instant release
-- Tier 2 (30%): Creator-specified oracle → attestation release
-- Tier 3 (10%): Optimistic + dispute window → governance arbitration
+**⚙️ 3-Tier Verification System**
+- **Tier 1 (60%):** Deterministic on-chain validation (schema check) → instant release
+- **Tier 2 (30%):** Creator-specified oracle (multisig, reputation gate) → attestation release
+- **Tier 3 (10%):** Optimistic + dispute window → governance arbitration
 
-**Worker Reputation**
+**🎯 Multi-Milestone Bounties**
+- Define Task A → Task B → Task C with dependencies
+- Each milestone unlocks only when previous is verified
+- Perfect for DAOs, grant programs, complex agent work
+
+**🏆 Portable Worker Reputation**
 - Immutable on-chain completion records
-- Portable reputation across protocols (not siloed to BountyGraph)
-- Tiers: new worker → established → expert (based on history)
+- Reputation follows workers across protocols
+- Tiers: new → established → expert (based on verifiable history)
 
 ## Installation & Demo
 
