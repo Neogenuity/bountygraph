@@ -49,20 +49,7 @@ impl Task {
     pub const SEED_PREFIX: &'static [u8] = b"task";
 
     pub fn space_for(dependencies: &Vec<u64>) -> usize {
-        let fixed = 32
-            + 8
-            + 32
-            + 8
-            + 1
-            + 1
-            + 8
-            + (1 + 32)
-            + (1 + 32)
-            + 8
-            + (1 + 32)
-            + 8
-            + 8
-            + 1;
+        let fixed = 32 + 8 + 32 + 8 + 1 + 1 + 8 + (1 + 32) + (1 + 32) + 8 + (1 + 32) + 8 + 8 + 1;
         let vec = 4 + dependencies.len() * 8;
         fixed + vec
     }

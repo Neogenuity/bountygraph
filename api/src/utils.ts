@@ -490,7 +490,7 @@ export function getReputationLevel(points: number): {
     }
   }
 
-  return levels[0];
+  return { ...levels[0], nextLevelPoints: levels.length > 1 ? levels[1].threshold : Infinity };
 }
 
 /**

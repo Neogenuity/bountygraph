@@ -12,8 +12,14 @@ declare_id!("Ghm5zPnHy5yJwQ6P22NYgNVrqPokDqAV3otdut3DSbSS");
 pub mod bountygraph {
     use super::*;
 
-    pub fn initialize_graph(ctx: Context<InitializeGraph>, params: InitializeGraphParams) -> Result<()> {
-        require!(params.max_dependencies_per_task > 0, BountyGraphError::InvalidConfig);
+    pub fn initialize_graph(
+        ctx: Context<InitializeGraph>,
+        params: InitializeGraphParams,
+    ) -> Result<()> {
+        require!(
+            params.max_dependencies_per_task > 0,
+            BountyGraphError::InvalidConfig
+        );
 
         let graph = &mut ctx.accounts.graph;
         graph.authority = ctx.accounts.authority.key();
@@ -69,7 +75,10 @@ pub mod bountygraph {
 
     pub fn fund_task(ctx: Context<FundTask>, lamports: u64) -> Result<()> {
         require!(lamports > 0, BountyGraphError::InvalidReward);
-        require!(ctx.accounts.task.status == TaskStatus::Open, BountyGraphError::TaskNotOpen);
+        require!(
+            ctx.accounts.task.status == TaskStatus::Open,
+            BountyGraphError::TaskNotOpen
+        );
 
         let ix = anchor_lang::solana_program::system_instruction::transfer(
             &ctx.accounts.funder.key(),
@@ -92,12 +101,21 @@ pub mod bountygraph {
         Ok(())
     }
 
-    pub fn submit_receipt(ctx: Context<SubmitReceipt>, params: SubmitReceiptParams) -> Result<()> {
+    pub fn submit_receipt<'a>(
+        ctx: Context<'_, '_, 'a, 'a, SubmitReceipt<'a>>,
+        params: SubmitReceiptParams,
+    ) -> Result<()> {
         let task = &mut ctx.accounts.task;
 
-        require!(task.status == TaskStatus::Open, BountyGraphError::TaskNotOpen);
+        require!(
+            task.status == TaskStatus::Open,
+            BountyGraphError::TaskNotOpen
+        );
         require!(!params.uri.is_empty(), BountyGraphError::InvalidUri);
-        require!(params.uri.len() <= Receipt::MAX_URI_LEN, BountyGraphError::InvalidUri);
+        require!(
+            params.uri.len() <= Receipt::MAX_URI_LEN,
+            BountyGraphError::InvalidUri
+        );
 
         require!(
             ctx.remaining_accounts.len() == task.dependencies.len(),
@@ -107,8 +125,14 @@ pub mod bountygraph {
         for (i, dep_task_info) in ctx.remaining_accounts.iter().enumerate() {
             let expected_dep_id = task.dependencies[i];
             let dep_task: Account<Task> = Account::try_from(dep_task_info)?;
-            require!(dep_task.graph == task.graph, BountyGraphError::InvalidDependency);
-            require!(dep_task.task_id == expected_dep_id, BountyGraphError::InvalidDependency);
+            require!(
+                dep_task.graph == task.graph,
+                BountyGraphError::InvalidDependency
+            );
+            require!(
+                dep_task.task_id == expected_dep_id,
+                BountyGraphError::InvalidDependency
+            );
             require!(
                 dep_task.status == TaskStatus::Completed,
                 BountyGraphError::DependencyNotCompleted
@@ -160,7 +184,10 @@ pub mod bountygraph {
 
     pub fn dispute_task(ctx: Context<DisputeTask>, params: DisputeTaskParams) -> Result<()> {
         require!(!params.reason.is_empty(), BountyGraphError::InvalidUri);
-        require!(params.reason.len() <= Dispute::MAX_REASON_LEN, BountyGraphError::InvalidUri);
+        require!(
+            params.reason.len() <= Dispute::MAX_REASON_LEN,
+            BountyGraphError::InvalidUri
+        );
 
         let task = &ctx.accounts.task;
         let signer = &ctx.accounts.initiator;
@@ -188,7 +215,10 @@ pub mod bountygraph {
         Ok(())
     }
 
-    pub fn resolve_dispute(ctx: Context<ResolveDispute>, params: ResolveDisputeParams) -> Result<()> {
+    pub fn resolve_dispute(
+        ctx: Context<ResolveDispute>,
+        params: ResolveDisputeParams,
+    ) -> Result<()> {
         require!(
             params.creator_pct + params.worker_pct == 100,
             BountyGraphError::InvalidSplit
