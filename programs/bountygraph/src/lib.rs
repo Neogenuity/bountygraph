@@ -298,24 +298,44 @@ pub mod bountygraph {
             BountyGraphError::InvalidUri
         );
 
-        let task = &ctx.accounts.task;
+        let task = &mut ctx.accounts.task;
         let signer = &ctx.accounts.initiator;
 
-        // AUTHORIZATION: Only creator or worker can initiate dispute
-        // This prevents third parties from freezing funds or disrupting tasks
+        // DISPUTE STATE: Disputes are only meaningful after a task is completed and before payout.
+        // This also prevents "pre-emptive" disputes that could freeze tasks.
         require!(
-            signer.key() == task.creator || signer.key() == task.completed_by.unwrap_or_default(),
+            task.status == TaskStatus::Completed,
+            BountyGraphError::InvalidTaskStatus
+        );
+        require!(
+            task.dispute_status == DisputeStatus::None,
+            BountyGraphError::DisputeAlreadyRaised
+        );
+
+        // AUTHORIZATION: Only creator or the worker who completed the task can initiate dispute.
+        let worker = task
+            .completed_by
+            .ok_or(BountyGraphError::InvalidTaskStatus)?;
+        require!(
+            signer.key() == task.creator || signer.key() == worker,
             BountyGraphError::UnauthorizedDispute
         );
+
+        let raised_at_slot = Clock::get()?.slot;
+
+        // Update task dispute flags so reward claims are blocked while dispute is open.
+        task.dispute_status = DisputeStatus::Raised;
+        task.disputed_by = Some(signer.key());
+        task.dispute_raised_at_slot = raised_at_slot;
 
         let dispute = &mut ctx.accounts.dispute;
         dispute.task = task.key();
         dispute.creator = task.creator;
-        dispute.worker = task.completed_by.unwrap_or_default();
+        dispute.worker = worker;
         dispute.raised_by = signer.key();
         dispute.reason = params.reason;
         dispute.status = DisputeStatus::Raised;
-        dispute.raised_at_slot = Clock::get()?.slot;
+        dispute.raised_at_slot = raised_at_slot;
         dispute.resolved_at_slot = None;
         dispute.arbiter = None;
         dispute.creator_pct = None;
@@ -329,22 +349,39 @@ pub mod bountygraph {
         ctx: Context<ResolveDispute>,
         params: ResolveDisputeParams,
     ) -> Result<()> {
-        // VALIDATION: Ensure percentages sum to 100 (prevents underflows or over-allocations)
         require!(
             params.creator_pct + params.worker_pct == 100,
             BountyGraphError::InvalidSplit
         );
 
-        let dispute = &mut ctx.accounts.dispute;
-
-        // AUTHORIZATION: Only graph authority (arbiter) can resolve disputes
-        // This prevents unauthorized actors from deciding dispute outcomes
         require!(
             ctx.accounts.authority.key() == ctx.accounts.graph.authority,
             BountyGraphError::UnauthorizedResolution
         );
 
-        // DISPUTE STATE: Verify dispute is in Raised state (prevent multiple resolutions)
+        let task = &mut ctx.accounts.task;
+        let dispute = &mut ctx.accounts.dispute;
+
+        require!(dispute.task == task.key(), BountyGraphError::InvalidResolution);
+        require!(
+            dispute.creator == task.creator,
+            BountyGraphError::InvalidCreator
+        );
+
+        let worker = task
+            .completed_by
+            .ok_or(BountyGraphError::InvalidTaskStatus)?;
+        require!(dispute.worker == worker, BountyGraphError::InvalidWorker);
+        require!(
+            ctx.accounts.creator.key() == task.creator,
+            BountyGraphError::InvalidCreator
+        );
+        require!(ctx.accounts.worker.key() == worker, BountyGraphError::InvalidWorker);
+
+        require!(
+            task.dispute_status == DisputeStatus::Raised,
+            BountyGraphError::NoDisputeRaised
+        );
         require!(
             dispute.status == DisputeStatus::Raised,
             BountyGraphError::InvalidTaskStatus
@@ -353,30 +390,24 @@ pub mod bountygraph {
         let escrow_lamports = ctx.accounts.escrow.to_account_info().lamports();
         require!(escrow_lamports > 0, BountyGraphError::EscrowEmpty);
 
-        // Calculate escrow split between creator and worker
-        // Uses checked_mul and checked_div to prevent arithmetic overflows
         let creator_amount = escrow_lamports
             .checked_mul(params.creator_pct as u64)
             .ok_or(BountyGraphError::ArithmeticOverflow)?
             .checked_div(100)
             .ok_or(BountyGraphError::ArithmeticOverflow)?;
 
-        // Worker gets the remainder (ensures no lamports are lost to rounding)
         let worker_amount = escrow_lamports
             .checked_sub(creator_amount)
             .ok_or(BountyGraphError::ArithmeticOverflow)?;
 
-        // SECURITY: Derive PDA signer seeds for invoke_signed
-        // This allows the program (which owns the escrow PDA) to authorize the transfer
+        let task_key = task.key();
         let seeds: &[&[u8]] = &[
             Escrow::SEED_PREFIX,
-            dispute.task.as_ref(),
+            task_key.as_ref(),
             &[ctx.accounts.escrow.bump],
         ];
         let signer_seeds: &[&[&[u8]]] = &[seeds];
 
-        // Transfer creator's share from escrow to creator account
-        // Uses invoke_signed with PDA seeds to authorize the transfer
         if creator_amount > 0 {
             anchor_lang::solana_program::program::invoke_signed(
                 &anchor_lang::solana_program::system_instruction::transfer(
@@ -393,7 +424,6 @@ pub mod bountygraph {
             )?;
         }
 
-        // Transfer worker's share from escrow to worker account
         if worker_amount > 0 {
             anchor_lang::solana_program::program::invoke_signed(
                 &anchor_lang::solana_program::system_instruction::transfer(
@@ -410,9 +440,15 @@ pub mod bountygraph {
             )?;
         }
 
-        // Update dispute state to Resolved and record arbiter decision
+        let resolved_at_slot = Clock::get()?.slot;
+
+        task.dispute_status = DisputeStatus::Resolved;
+        task.resolved_by = Some(ctx.accounts.authority.key());
+        task.dispute_resolved_at_slot = resolved_at_slot;
+        task.worker_award_lamports = worker_amount;
+
         dispute.status = DisputeStatus::Resolved;
-        dispute.resolved_at_slot = Some(Clock::get()?.slot);
+        dispute.resolved_at_slot = Some(resolved_at_slot);
         dispute.arbiter = Some(ctx.accounts.authority.key());
         dispute.creator_pct = Some(params.creator_pct);
         dispute.worker_pct = Some(params.worker_pct);
