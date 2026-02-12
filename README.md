@@ -75,8 +75,6 @@ Valid DAG (BountyGraph Accepts):          Invalid Cycle (BountyGraph Rejects):
    Unlock Funds                             🚫 REJECTED: Cycle detected!
 ```
 
-**
-
 1. **Cryptographic Dependency Verification** — Task B cannot start until Task A's proof-of-work is verified on-chain via topological DAG validation
 2. **Circular Dependency Prevention** — Prevents Task A→B→A cycles at the program level (unique to BountyGraph)
 3. **Trustless Escrow via PDAs** — Bounty funds held in program-owned accounts; creators cannot withdraw once verified
@@ -553,14 +551,14 @@ const [receiptPda] = client.pdas.receipt(taskPda, agentAddress);
 # Install dependencies (including dev)
 npm install --include=dev
 
-# Run all Anchor tests (program + SDK)
+# Run SDK/unit tests (mocha)
 npm run test:anchor
 
-# Run TypeScript tests only
-npm run test:ts
+# Run API tests (mocha)
+npm run test:api
 
-# Run with coverage
-npm run test:coverage
+# Run everything
+npm run test:all
 ```
 
 ### Test Coverage Highlights
