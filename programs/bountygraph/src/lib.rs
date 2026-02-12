@@ -362,7 +362,10 @@ pub mod bountygraph {
         let task = &mut ctx.accounts.task;
         let dispute = &mut ctx.accounts.dispute;
 
-        require!(dispute.task == task.key(), BountyGraphError::InvalidResolution);
+        require!(
+            dispute.task == task.key(),
+            BountyGraphError::InvalidResolution
+        );
         require!(
             dispute.creator == task.creator,
             BountyGraphError::InvalidCreator
@@ -376,7 +379,10 @@ pub mod bountygraph {
             ctx.accounts.creator.key() == task.creator,
             BountyGraphError::InvalidCreator
         );
-        require!(ctx.accounts.worker.key() == worker, BountyGraphError::InvalidWorker);
+        require!(
+            ctx.accounts.worker.key() == worker,
+            BountyGraphError::InvalidWorker
+        );
 
         require!(
             task.dispute_status == DisputeStatus::Raised,
