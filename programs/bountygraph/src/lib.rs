@@ -94,7 +94,7 @@ pub mod bountygraph {
                 // If any dependency already lists this task, adding (this -> dependency) would create
                 // A -> B and B -> A, which we must reject at the protocol layer.
                 require!(
-                    !dep_task.dependencies.iter().any(|d| *d == params.task_id),
+                    !dep_task.dependencies.contains(&params.task_id),
                     BountyGraphError::CircularDependency
                 );
             }
@@ -205,14 +205,19 @@ pub mod bountygraph {
             BountyGraphError::InvalidUri
         );
 
-        // TOPOLOGICAL VALIDATION: Ensure all dependency accounts provided
+        // TOPOLOGICAL VALIDATION: Ensure all dependency accounts provided.
+        //
+        // NOTE ON ORDERING:
+        // - `task.dependencies` is stored on-chain as a strictly increasing list (validated at create_task).
+        // - Clients must pass the corresponding Task accounts in the exact same order.
+        // - This keeps the check O(n) and avoids extra sorting / indexing syscalls on-chain.
         require!(
             ctx.remaining_accounts.len() == dependencies.len(),
             BountyGraphError::MissingDependencyAccounts
         );
 
-        // TOPOLOGICAL CONSTRAINT: Verify ALL dependencies are marked Completed before allowing this task to complete
-        // This enforces the DAG property: task cannot complete unless all prerequisites are satisfied
+        // TOPOLOGICAL CONSTRAINT: Verify ALL dependencies are marked Completed before allowing this task to complete.
+        // This enforces the DAG execution rule: a task cannot be completed until all prerequisites are satisfied.
         for (i, dep_task_info) in ctx.remaining_accounts.iter().enumerate() {
             let expected_dep_id = dependencies[i];
             let dep_task: Account<Task> = Account::try_from(dep_task_info)?;

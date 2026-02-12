@@ -2,23 +2,23 @@ use anchor_lang::prelude::*;
 
 #[error_code]
 pub enum BountyGraphError {
-    #[msg("Invalid graph configuration")]
+    #[msg("Invalid graph configuration (max_dependencies_per_task must be > 0)")]
     InvalidConfig,
-    #[msg("Invalid reward amount")]
+    #[msg("Invalid reward amount (must be > 0 and within declared bounds)")]
     InvalidReward,
-    #[msg("Too many dependencies")]
+    #[msg("Too many dependencies (exceeds graph.max_dependencies_per_task)")]
     TooManyDependencies,
-    #[msg("Invalid dependency list")]
+    #[msg("Invalid dependency list (must be strictly increasing, no self refs, and match provided accounts)")]
     InvalidDependency,
-    #[msg("Circular dependency detected")]
+    #[msg("Circular dependency detected (immediate back-edge / 2-cycle)")]
     CircularDependency,
     #[msg("Arithmetic overflow")]
     ArithmeticOverflow,
-    #[msg("Task is not open")]
+    #[msg("Task is not open (expected status = Open)")]
     TaskNotOpen,
-    #[msg("Invalid URI")]
+    #[msg("Invalid receipt URI (non-empty and <= Receipt::MAX_URI_LEN)")]
     InvalidUri,
-    #[msg("Missing dependency accounts")]
+    #[msg("Missing dependency accounts (pass all prerequisite Task accounts in dependency order)")]
     MissingDependencyAccounts,
     #[msg("A dependency task is not completed")]
     DependencyNotCompleted,
@@ -46,7 +46,7 @@ pub enum BountyGraphError {
     InvalidCreator,
     #[msg("Invalid worker account")]
     InvalidWorker,
-    #[msg("Only creator or worker can raise dispute")]
+    #[msg("Only creator or participating worker can raise dispute")]
     UnauthorizedDispute,
     #[msg("Only arbiter can resolve dispute")]
     UnauthorizedResolution,
