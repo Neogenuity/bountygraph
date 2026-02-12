@@ -237,7 +237,7 @@ export function parseHeliusEvent(event: any): { type: string; bountyId?: string 
 export function calculateMilestonePayout(
   totalAmount: number,
   milestoneCount: number,
-  currentMilestone: number = 0
+  _currentMilestone: number = 0
 ): number {
   if (milestoneCount <= 0 || totalAmount <= 0) {
     return 0;
