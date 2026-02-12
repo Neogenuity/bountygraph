@@ -3,8 +3,9 @@
  * Tests for validation, error handling, and helper functions
  */
 
-import * as assert from 'assert';
-import {
+const assert = require('assert');
+const { Keypair } = require('@solana/web3.js');
+const {
   isValidSolanaKey,
   isValidHash,
   validateBountyRequest,
@@ -23,12 +24,12 @@ import {
   calculateReputationDelta,
   getReputationLevel,
   formatBountyStatus,
-} from '../src/utils';
+} = require('../src/utils');
 
 describe('BountyGraph API Utilities', () => {
   describe('Solana Key Validation', () => {
     it('should validate correct Solana public key', () => {
-      const validKey = 'BGRPHFnG8z7gxJnefVh3Y7LV9TjTuN2hfQdqzN9vNS5A';
+      const validKey = Keypair.generate().publicKey.toBase58();
       assert.ok(isValidSolanaKey(validKey), 'Valid Solana key should pass validation');
     });
 
@@ -44,7 +45,7 @@ describe('BountyGraph API Utilities', () => {
 
     it('should reject empty key', () => {
       assert.ok(!isValidSolanaKey(''), 'Empty key should fail validation');
-      assert.ok(!isValidSolanaKey(null as any), 'Null key should fail validation');
+      assert.ok(!isValidSolanaKey(null), 'Null key should fail validation');
     });
   });
 
@@ -327,13 +328,13 @@ describe('BountyGraph API Utilities', () => {
 
   describe('DAG Cycle Detection', () => {
     it('should detect direct self-reference cycle', () => {
-      const deps = new Map<string, string[]>();
+      const deps = new Map();
       const hasCycle = wouldCreateCycle('task-1', 'task-1', deps);
       assert.ok(hasCycle, 'Should detect self-reference cycle');
     });
 
     it('should detect simple cycle (A -> B -> A)', () => {
-      const deps = new Map<string, string[]>([
+      const deps = new Map([
         ['task-B', ['task-A']],
       ]);
       const hasCycle = wouldCreateCycle('task-A', 'task-B', deps);
@@ -341,7 +342,7 @@ describe('BountyGraph API Utilities', () => {
     });
 
     it('should detect complex cycle (A -> B -> C -> A)', () => {
-      const deps = new Map<string, string[]>([
+      const deps = new Map([
         ['task-B', ['task-A']],
         ['task-C', ['task-B']],
       ]);
@@ -350,7 +351,7 @@ describe('BountyGraph API Utilities', () => {
     });
 
     it('should allow valid DAG (A -> B, C -> B)', () => {
-      const deps = new Map<string, string[]>([
+      const deps = new Map([
         ['task-A', ['task-B']],
       ]);
       const hasCycle = wouldCreateCycle('task-C', 'task-B', deps);
@@ -358,7 +359,7 @@ describe('BountyGraph API Utilities', () => {
     });
 
     it('should allow linear chain (A -> B -> C -> D)', () => {
-      const deps = new Map<string, string[]>([
+      const deps = new Map([
         ['task-A', ['task-B']],
         ['task-B', ['task-C']],
       ]);
@@ -367,7 +368,7 @@ describe('BountyGraph API Utilities', () => {
     });
 
     it('should handle empty dependency map', () => {
-      const deps = new Map<string, string[]>();
+      const deps = new Map();
       const hasCycle = wouldCreateCycle('task-A', 'task-B', deps);
       assert.ok(!hasCycle, 'Should handle empty dependencies');
     });
@@ -393,13 +394,13 @@ describe('BountyGraph API Utilities', () => {
     });
 
     it('should reject non-string dependencies', () => {
-      const deps = ['task-1', 123 as any, 'task-3'];
+      const deps = ['task-1', 123, 'task-3'];
       const error = validateDependencyList(deps);
       assert.ok(error?.includes('strings'), 'Should reject non-strings');
     });
 
     it('should reject non-array input', () => {
-      const error = validateDependencyList('not-an-array' as any);
+      const error = validateDependencyList('not-an-array');
       assert.ok(error?.includes('array'), 'Should reject non-array');
     });
 
@@ -412,7 +413,7 @@ describe('BountyGraph API Utilities', () => {
   describe('Topological Sort', () => {
     it('should sort simple linear dependency chain', () => {
       const taskIds = ['task-1', 'task-2', 'task-3'];
-      const deps = new Map<string, string[]>([
+      const deps = new Map([
         ['task-1', ['task-2']],
         ['task-2', ['task-3']],
       ]);
@@ -422,20 +423,20 @@ describe('BountyGraph API Utilities', () => {
 
     it('should sort diamond dependency graph', () => {
       const taskIds = ['A', 'B', 'C', 'D'];
-      const deps = new Map<string, string[]>([
+      const deps = new Map([
         ['A', ['B', 'C']],
         ['B', ['D']],
         ['C', ['D']],
       ]);
       const sorted = topologicalSort(taskIds, deps);
       assert.ok(sorted !== null, 'Should return valid sort');
-      assert.strictEqual(sorted![0], 'D', 'D should be first (no dependencies)');
-      assert.strictEqual(sorted![3], 'A', 'A should be last (depends on all)');
+      assert.strictEqual(sorted[0], 'D', 'D should be first (no dependencies)');
+      assert.strictEqual(sorted[3], 'A', 'A should be last (depends on all)');
     });
 
     it('should detect cycle and return null', () => {
       const taskIds = ['A', 'B', 'C'];
-      const deps = new Map<string, string[]>([
+      const deps = new Map([
         ['A', ['B']],
         ['B', ['C']],
         ['C', ['A']],
@@ -446,14 +447,14 @@ describe('BountyGraph API Utilities', () => {
 
     it('should handle tasks with no dependencies', () => {
       const taskIds = ['A', 'B', 'C'];
-      const deps = new Map<string, string[]>();
+      const deps = new Map();
       const sorted = topologicalSort(taskIds, deps);
       assert.strictEqual(sorted?.length, 3, 'Should return all tasks');
     });
 
     it('should handle single task', () => {
       const taskIds = ['A'];
-      const deps = new Map<string, string[]>();
+      const deps = new Map();
       const sorted = topologicalSort(taskIds, deps);
       assert.deepStrictEqual(sorted, ['A']);
     });
@@ -464,7 +465,7 @@ describe('BountyGraph API Utilities', () => {
       const data = {
         bountyValue: 1000000,
         completedOnTime: false,
-        verificationTier: 'schema' as const,
+        verificationTier: 'schema',
         complexityScore: 1,
       };
       const delta = calculateReputationDelta(data);
@@ -475,7 +476,7 @@ describe('BountyGraph API Utilities', () => {
       const onTimeData = {
         bountyValue: 1000000,
         completedOnTime: true,
-        verificationTier: 'schema' as const,
+        verificationTier: 'schema',
         complexityScore: 1,
       };
       const lateData = { ...onTimeData, completedOnTime: false };
@@ -495,15 +496,15 @@ describe('BountyGraph API Utilities', () => {
 
       const schemaDelta = calculateReputationDelta({
         ...baseData,
-        verificationTier: 'schema' as const,
+        verificationTier: 'schema',
       });
       const oracleDelta = calculateReputationDelta({
         ...baseData,
-        verificationTier: 'oracle' as const,
+        verificationTier: 'oracle',
       });
       const optimisticDelta = calculateReputationDelta({
         ...baseData,
-        verificationTier: 'optimistic' as const,
+        verificationTier: 'optimistic',
       });
 
       assert.ok(oracleDelta > schemaDelta, 'Oracle should give more points than schema');
@@ -515,7 +516,7 @@ describe('BountyGraph API Utilities', () => {
       const lowValueData = {
         bountyValue: 1000000, // 0.001 SOL
         completedOnTime: false,
-        verificationTier: 'schema' as const,
+        verificationTier: 'schema',
         complexityScore: 1,
       };
       const highValueData = {
@@ -533,7 +534,7 @@ describe('BountyGraph API Utilities', () => {
       const lowComplexity = {
         bountyValue: 1000000,
         completedOnTime: false,
-        verificationTier: 'schema' as const,
+        verificationTier: 'schema',
         complexityScore: 1,
       };
       const highComplexity = { ...lowComplexity, complexityScore: 10 };

@@ -3,9 +3,10 @@
  * Runs against an in-process Express app (no external server required)
  */
 
-import * as assert from 'assert';
-import request from 'supertest';
-import { createApp, createDefaultState } from '../src/app';
+const assert = require('assert');
+const request = require('supertest');
+const { Keypair } = require('@solana/web3.js');
+const { createApp, createDefaultState } = require('../src/app');
 
 const TIMEOUT = 10000;
 
@@ -13,8 +14,11 @@ describe('BountyGraph API Integration Tests', () => {
   const state = createDefaultState();
   const app = createApp(state);
 
-  let createdBountyId: string;
-  let createdReceiptId: string;
+  const creatorWallet = Keypair.generate().publicKey.toBase58();
+  const workerWallet = Keypair.generate().publicKey.toBase58();
+
+  let createdBountyId;
+  let createdReceiptId;
 
   describe('Health & Server Tests', () => {
     it('should return 200 on health check', async function () {
@@ -53,7 +57,7 @@ describe('BountyGraph API Integration Tests', () => {
           description: 'A test bounty for integration testing',
           totalAmount: 1_000_000,
           milestoneCount: 3,
-          creatorWallet: 'wallet123',
+          creatorWallet,
         })
         .expect(201);
 
@@ -79,7 +83,7 @@ describe('BountyGraph API Integration Tests', () => {
           title: 'Invalid Bounty',
           totalAmount: 1_000_000,
           milestoneCount: 15,
-          creatorWallet: 'wallet123',
+          creatorWallet,
         })
         .expect(400);
     });
@@ -111,7 +115,7 @@ describe('BountyGraph API Integration Tests', () => {
           milestoneIndex: 0,
           artifactHash: 'a'.repeat(64),
           metadataUri: 'ipfs://QmTest123',
-          workerWallet: 'worker-wallet-1',
+          workerWallet,
         })
         .expect(201);
 
@@ -131,6 +135,8 @@ describe('BountyGraph API Integration Tests', () => {
     it('should prevent duplicate receipt for same milestone from same worker', async function () {
       this.timeout(TIMEOUT);
       const bountyId = 'dup-test-' + Date.now();
+      const dupCreator = Keypair.generate().publicKey.toBase58();
+      const dupWorker = Keypair.generate().publicKey.toBase58();
 
       // Create a bounty
       await request(app)
@@ -140,7 +146,7 @@ describe('BountyGraph API Integration Tests', () => {
           title: 'Duplicate Test',
           totalAmount: 1_000_000,
           milestoneCount: 2,
-          creatorWallet: 'creator-dup',
+          creatorWallet: dupCreator,
         })
         .expect(201);
 
@@ -154,7 +160,7 @@ describe('BountyGraph API Integration Tests', () => {
           milestoneIndex: 0,
           artifactHash: 'a'.repeat(64),
           metadataUri: 'ipfs://first',
-          workerWallet: 'worker-dup',
+          workerWallet: dupWorker,
         })
         .expect(201);
 
@@ -168,7 +174,7 @@ describe('BountyGraph API Integration Tests', () => {
           milestoneIndex: 0,
           artifactHash: 'b'.repeat(64),
           metadataUri: 'ipfs://second',
-          workerWallet: 'worker-dup',
+          workerWallet: dupWorker,
         })
         .expect(409);
 
@@ -189,7 +195,7 @@ describe('BountyGraph API Integration Tests', () => {
         .get(`/bounties/${createdBountyId}/receipts`)
         .expect(200);
       assert.ok(Array.isArray(response.body), 'Should return array of receipts');
-      assert.ok(response.body.every((r: any) => r.bountyId === createdBountyId));
+      assert.ok(response.body.every((r) => r.bountyId === createdBountyId));
     });
   });
 
@@ -198,7 +204,7 @@ describe('BountyGraph API Integration Tests', () => {
       this.timeout(TIMEOUT);
       const response = await request(app)
         .post(`/receipts/${createdReceiptId}/verify`)
-        .send({ approved: true, verifier: 'wallet123', verifierNote: 'Work quality is excellent' })
+        .send({ approved: true, verifier: creatorWallet, verifierNote: 'Work quality is excellent' })
         .expect(200);
 
       assert.ok(response.body.success);
@@ -217,14 +223,14 @@ describe('BountyGraph API Integration Tests', () => {
           milestoneIndex: 1,
           artifactHash: 'b'.repeat(64),
           metadataUri: 'ipfs://test',
-          workerWallet: 'worker-wallet-2',
+          workerWallet: Keypair.generate().publicKey.toBase58(),
         })
         .expect(201);
 
       // Try to verify with a different wallet than the creator
       const response = await request(app)
         .post(`/receipts/${receiptId}/verify`)
-        .send({ approved: true, verifier: 'unauthorized-wallet' })
+        .send({ approved: true, verifier: Keypair.generate().publicKey.toBase58() })
         .expect(403);
 
       assert.ok(response.body.error.includes('creator'));

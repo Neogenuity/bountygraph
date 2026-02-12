@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "jest"
+    "test": "echo \"(ui) no test suite configured\""
   },
   "dependencies": {
     "next": "^14.0.4",

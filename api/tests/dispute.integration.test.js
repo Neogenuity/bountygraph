@@ -1,6 +1,7 @@
-import * as assert from 'assert';
-import request from 'supertest';
-import { createApp, createDefaultState } from '../src/app';
+const assert = require('assert');
+const request = require('supertest');
+const { Keypair } = require('@solana/web3.js');
+const { createApp, createDefaultState } = require('../src/app');
 
 describe('BountyGraph API dispute flow', () => {
   it('allows creator to raise dispute and arbiter to resolve with a split', async () => {
@@ -8,8 +9,8 @@ describe('BountyGraph API dispute flow', () => {
     const app = createApp(state);
 
     const bountyId = `bounty-${Date.now()}`;
-    const creator = 'creator-wallet';
-    const worker = 'worker-wallet';
+    const creator = Keypair.generate().publicKey.toBase58();
+    const worker = Keypair.generate().publicKey.toBase58();
 
     const createRes = await request(app)
       .post('/bounties')
@@ -47,7 +48,7 @@ describe('BountyGraph API dispute flow', () => {
 
     const resolve = await request(app)
       .post(`/bounties/${bountyId}/disputes/resolve`)
-      .send({ resolvedBy: 'arbiter-wallet', workerAwardAmount: 200 })
+      .send({ resolvedBy: Keypair.generate().publicKey.toBase58(), workerAwardAmount: 200, requesterWallet: creator })
       .expect(200);
 
     assert.equal(resolve.body.bounty.disputeStatus, 'resolved');
@@ -68,13 +69,13 @@ describe('BountyGraph API dispute flow', () => {
         title: 'Test',
         totalAmount: 1000,
         milestoneCount: 1,
-        creatorWallet: 'creator-wallet',
+        creatorWallet: Keypair.generate().publicKey.toBase58(),
       })
       .expect(201);
 
     await request(app)
       .post(`/bounties/${bountyId}/disputes`)
-      .send({ raisedBy: 'random-wallet' })
+      .send({ raisedBy: Keypair.generate().publicKey.toBase58() })
       .expect(403);
   });
 
@@ -83,8 +84,8 @@ describe('BountyGraph API dispute flow', () => {
     const app = createApp(state);
 
     const bountyId = `bounty-verify-${Date.now()}`;
-    const creator = 'creator-wallet';
-    const worker = 'worker-wallet';
+    const creator = Keypair.generate().publicKey.toBase58();
+    const worker = Keypair.generate().publicKey.toBase58();
 
     // Create bounty
     await request(app)
@@ -115,7 +116,7 @@ describe('BountyGraph API dispute flow', () => {
     // Try to verify with non-creator (should fail)
     await request(app)
       .post(`/receipts/${receiptId}/verify`)
-      .send({ approved: true, verifier: 'attacker-wallet' })
+      .send({ approved: true, verifier: Keypair.generate().publicKey.toBase58() })
       .expect(403);
 
     // Verify with creator (should succeed)

@@ -1,24 +1,24 @@
-import { expect } from "chai";
-import { PublicKey, Keypair } from "@solana/web3.js";
+const { expect } = require("chai");
+const { PublicKey, Keypair } = require("@solana/web3.js");
 
-import {
+const {
   findDisputePda,
   findEscrowPda,
   findGraphPda,
   findReceiptPda,
   findTaskPda,
-} from "../sdk/src/pdas.ts";
+} = require("../sdk/src/pdas");
 
 const PROGRAM_ID = new PublicKey("Ghm5zPnHy5yJwQ6P22NYgNVrqPokDqAV3otdut3DSbSS");
 
-function isStrictlyIncreasing(xs: bigint[]): boolean {
+function isStrictlyIncreasing(xs) {
   for (let i = 1; i < xs.length; i++) {
     if (xs[i] <= xs[i - 1]) return false;
   }
   return true;
 }
 
-function toBigIntArray(xs: Array<number | bigint>): bigint[] {
+function toBigIntArray(xs) {
   return xs.map((x) => (typeof x === "bigint" ? x : BigInt(x)));
 }
 

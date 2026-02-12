@@ -4,6 +4,7 @@
  */
 
 import { Response } from 'express';
+import { PublicKey } from '@solana/web3.js';
 
 // ============ Error Types ============
 
@@ -35,12 +36,14 @@ export class ApiError extends Error {
  * Validate that a string is a valid Solana public key
  */
 export function isValidSolanaKey(key: string): boolean {
-  // Solana keys are 44 characters (32 bytes base58)
-  if (!key || key.length !== 44) return false;
+  if (typeof key !== 'string' || key.length === 0) return false;
+
   try {
-    // Basic base58 validation
-    const base58regex = /^[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]+$/;
-    return base58regex.test(key);
+    // PublicKey constructor validates base58 and byte length (32 bytes).
+    // Do NOT require "on-curve"; PDAs are valid public keys and are off-curve.
+    // Normalizing round-trip also rejects some malformed encodings.
+    const pk = new PublicKey(key);
+    return pk.toBase58() === key;
   } catch {
     return false;
   }
@@ -248,7 +251,8 @@ export function calculateMilestonePayout(
  */
 export function generateReceiptId(bountyId: string, milestoneIndex: number): string {
   const timestamp = Date.now();
-  return `receipt-${bountyId}-${milestoneIndex}-${timestamp}`;
+  const random = Math.random().toString(36).slice(2, 10);
+  return `receipt-${bountyId}-${milestoneIndex}-${timestamp}-${random}`;
 }
 
 /**
@@ -300,6 +304,11 @@ export function wouldCreateCycle(
 
   // WHY this direction: a new edge (taskId -> newDependencyId) creates a cycle iff there is already
   // a path (newDependencyId -> ... -> taskId). We check reachability by walking dependency edges.
+  // Build temporary graph with the new edge
+  const tempDeps = new Map(existingDependencies);
+  const currentDeps = tempDeps.get(taskId) || [];
+  tempDeps.set(taskId, [...currentDeps, newDependencyId]);
+
   const visited = new Set<string>();
   const recursionStack = new Set<string>();
 
@@ -314,7 +323,7 @@ export function wouldCreateCycle(
     visited.add(currentId);
     recursionStack.add(currentId);
 
-    const deps = existingDependencies.get(currentId) || [];
+    const deps = tempDeps.get(currentId) || [];
     for (const depId of deps) {
       if (hasCycle(depId)) {
         return true;
@@ -324,11 +333,6 @@ export function wouldCreateCycle(
     recursionStack.delete(currentId);
     return false;
   }
-
-  // Build temporary graph with the new edge
-  const tempDeps = new Map(existingDependencies);
-  const currentDeps = tempDeps.get(taskId) || [];
-  tempDeps.set(taskId, [...currentDeps, newDependencyId]);
 
   // Check if the new graph has a cycle starting from taskId
   return hasCycle(taskId);
