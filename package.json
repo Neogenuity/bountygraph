@@ -32,6 +32,7 @@
   "devDependencies": {
     "@types/chai": "^4.3.11",
     "chai": "^4.3.10",
+    "eslint": "^8.56.0",
     "mocha": "^11.7.2",
     "ts-node": "^10.9.2"
   }

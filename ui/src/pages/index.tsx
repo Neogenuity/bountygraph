@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
-import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
-import axios from 'axios';
+
+import { DisputeDashboard } from '../components/DisputeDashboard';
 
 interface BountyStats {
   totalBounties: number;
@@ -13,14 +13,12 @@ interface BountyStats {
 }
 
 const Home: React.FC = () => {
-  const { publicKey } = useWallet();
   const [stats, setStats] = useState<BountyStats | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        // Mock stats for now
         setStats({
           totalBounties: 0,
           activeBounties: 0,
@@ -45,7 +43,6 @@ const Home: React.FC = () => {
       </Head>
 
       <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800">
-        {/* Navigation */}
         <nav className="border-b border-slate-700">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
             <div className="flex items-center gap-2">
@@ -63,13 +60,10 @@ const Home: React.FC = () => {
           </div>
         </nav>
 
-        {/* Hero Section */}
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             <div>
-              <h1 className="text-5xl font-bold text-white mb-6">
-                Verification-Gated Bounty Escrow
-              </h1>
+              <h1 className="text-5xl font-bold text-white mb-6">Verification-Gated Bounty Escrow</h1>
               <p className="text-xl text-slate-300 mb-8">
                 BountyGraph enables agents to earn cryptographically-verified rewards for completing
                 computational tasks. Proof-of-work receipts, dependency graphs, and automated escrow
@@ -119,33 +113,24 @@ const Home: React.FC = () => {
           </div>
         </section>
 
-        {/* Stats Section */}
         {stats && !loading && (
           <section className="bg-slate-700/50 border-t border-b border-slate-600">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-indigo-500">
-                    {stats.totalBounties}
-                  </div>
+                  <div className="text-3xl font-bold text-indigo-500">{stats.totalBounties}</div>
                   <div className="text-slate-400 mt-2">Total Bounties</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-indigo-500">
-                    {stats.activeBounties}
-                  </div>
+                  <div className="text-3xl font-bold text-indigo-500">{stats.activeBounties}</div>
                   <div className="text-slate-400 mt-2">Active Now</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-indigo-500">
-                    {stats.totalVolume}
-                  </div>
+                  <div className="text-3xl font-bold text-indigo-500">{stats.totalVolume}</div>
                   <div className="text-slate-400 mt-2">Total Volume</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-indigo-500">
-                    {stats.totalPayouts}
-                  </div>
+                  <div className="text-3xl font-bold text-indigo-500">{stats.totalPayouts}</div>
                   <div className="text-slate-400 mt-2">Total Paid Out</div>
                 </div>
               </div>
@@ -153,11 +138,10 @@ const Home: React.FC = () => {
           </section>
         )}
 
-        {/* Integrations Section */}
+        <DisputeDashboard />
+
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-          <h2 className="text-3xl font-bold text-white mb-8 text-center">
-            Built to Integrate
-          </h2>
+          <h2 className="text-3xl font-bold text-white mb-8 text-center">Built to Integrate</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[
               { name: 'ACR', desc: 'Reputation & trust scoring' },
@@ -167,7 +151,10 @@ const Home: React.FC = () => {
               { name: 'Agent Casino', desc: 'Multi-milestone hits' },
               { name: 'Helius', desc: 'Real-time event indexing' },
             ].map((integration) => (
-              <div key={integration.name} className="bg-slate-700/50 rounded-lg p-6 border border-slate-600">
+              <div
+                key={integration.name}
+                className="bg-slate-700/50 rounded-lg p-6 border border-slate-600"
+              >
                 <h3 className="font-semibold text-white mb-2">{integration.name}</h3>
                 <p className="text-slate-400 text-sm">{integration.desc}</p>
               </div>
@@ -175,12 +162,14 @@ const Home: React.FC = () => {
           </div>
         </section>
 
-        {/* Footer */}
         <footer className="border-t border-slate-700 py-8 mt-12">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-slate-400">
             <p>Built by neogenuity for the Colosseum Agent Hackathon</p>
             <p className="text-sm mt-2">
-              <Link href="https://github.com/neogenuity/bountygraph" className="text-indigo-400 hover:text-indigo-300">
+              <Link
+                href="https://github.com/neogenuity/bountygraph"
+                className="text-indigo-400 hover:text-indigo-300"
+              >
                 GitHub
               </Link>
             </p>
