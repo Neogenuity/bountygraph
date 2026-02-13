@@ -35,5 +35,9 @@
     "eslint": "^8.56.0",
     "mocha": "^11.7.2",
     "ts-node": "^10.9.2"
+  },
+  "overrides": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
   }
 }
