@@ -11,8 +11,8 @@
     "dev": "npm run dev --workspaces",
     "build": "npm run build --workspaces",
     "test": "npm run test --workspaces",
-    "test:anchor": "TS_NODE_TRANSPILE_ONLY=1 TS_NODE_PROJECT=tsconfig.json mocha tests/bountygraph.test.js --require ts-node/register --timeout 60000",
-    "test:api": "TS_NODE_TRANSPILE_ONLY=1 TS_NODE_PROJECT=api/tsconfig.json mocha api/tests/**/*.test.js --require ts-node/register --timeout 30000",
+    "test:anchor": "TS_NODE_TRANSPILE_ONLY=1 TS_NODE_PROJECT=tsconfig.json npx mocha tests/bountygraph.test.js --require ts-node/register --timeout 60000",
+    "test:api": "TS_NODE_TRANSPILE_ONLY=1 TS_NODE_PROJECT=api/tsconfig.json npx mocha api/tests/**/*.test.js --require ts-node/register --timeout 30000",
     "test:all": "npm run test:anchor && npm run test:api",
     "lint": "npm run lint --workspaces",
     "ci": "npm run test:all && npm run build",
@@ -30,11 +30,12 @@
   "author": "neogenuity",
   "license": "MIT",
   "devDependencies": {
-    "@types/chai": "^4.3.11",
-    "chai": "^4.3.10",
-    "eslint": "^8.56.0",
-    "mocha": "^11.7.2",
-    "ts-node": "^10.9.2"
+    "@types/chai": "^4.3.20",
+    "chai": "^4.5.0",
+    "eslint": "^8.57.1",
+    "mocha": "^11.7.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
   },
   "overrides": {
     "react": "18.3.1",
